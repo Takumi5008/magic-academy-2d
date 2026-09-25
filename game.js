@@ -124,7 +124,14 @@ function buildForest() {
   const map = emptyMap();
   addBorder(map);
   map[7][0] = 'D';
+  map[ROWS - 1][10] = 'D';
   [[4, 3], [15, 3], [4, 11], [15, 11], [9, 3], [9, 11]].forEach(([x, y]) => map[y][x] = 'W');
+  return map;
+}
+function buildTrialRoom() {
+  const map = emptyMap();
+  addBorder(map);
+  map[ROWS - 1][10] = 'D';
   return map;
 }
 function buildClassroom() {
@@ -414,6 +421,26 @@ function floraLines(quest) {
   }
   return { lines: ['温室の葉は時間が経つとまた生えてくるわ。', 'ポーションが減ったら、いつでも採りに来てね。'], complete: () => {} };
 }
+function renLines(quest) {
+  if (!quest.dungeonRewardGiven) {
+    return { lines: ['ここは「修行の回廊」だ。', 'まだ早い。学院の本当のクエストを終えてから来るといい。'], complete: () => {} };
+  }
+  if (quest.trialStage === 0) {
+    return {
+      lines: [
+        'よく来たな。ここには10の試練の間が続いている。',
+        '各部屋の妖精をすべて倒せば、次の間へ続く扉が開く。',
+        '進むごとに手強くなっていくが……お前ならやれるはずだ。',
+        '準備はいいか? 話し終えると同時に第1の間が始まるぞ!'
+      ],
+      complete: () => { startTrialCorridor(); }
+    };
+  }
+  if (quest.trialStage > TRIAL_STAGE_MAX) {
+    return { lines: ['全ての試練を制した者よ、お前はもう真の魔法使いだ。', 'いつでも修行をやり直しに来るといい。'], complete: () => {} };
+  }
+  return { lines: [`第 ${quest.trialStage} の間に挑戦中だな。`, '油断するなよ。'], complete: () => {} };
+}
 
 // ---- シーン定義 ----
 const SCENES = {
@@ -465,8 +492,24 @@ const SCENES = {
   forest: {
     label: '訓練の森',
     map: buildForest(),
-    doors: [{ x: 0, y: 7, to: 'courtyard', entry: { x: COLS - 2, y: 7 } }],
-    npcs: [{ x: 3, y: 7, name: '森の番人ノア', color: '#3a5a3f', hairColor: '#2a3a28', hairStyle: 'spike', eyeColor: '#9fd68a', getLines: noahLines }],
+    doors: [
+      { x: 0, y: 7, to: 'courtyard', entry: { x: COLS - 2, y: 7 } },
+      { x: 10, y: ROWS - 1, to: 'trial', entry: { x: 10, y: 1 } }
+    ],
+    npcs: [
+      { x: 3, y: 7, name: '森の番人ノア', color: '#3a5a3f', hairColor: '#2a3a28', hairStyle: 'spike', eyeColor: '#9fd68a', getLines: noahLines },
+      { x: 12, y: 11, name: '修行僧レン', color: '#8a6a3f', hairColor: '#3a2a1a', hairStyle: 'spike', eyeColor: '#d6c09f', getLines: renLines }
+    ],
+    enemySpawns: []
+  },
+  trial: {
+    label: '修行の回廊',
+    map: buildTrialRoom(),
+    doors: [
+      { x: 10, y: ROWS - 1, to: 'forest', entry: { x: 10, y: ROWS - 2 } },
+      { x: 10, y: 0, to: 'trial', entry: { x: 10, y: ROWS - 2 } }
+    ],
+    npcs: [],
     enemySpawns: []
   },
   dungeon1: {
@@ -504,6 +547,7 @@ const BOOK_SPOTS = [
 ];
 const LEAF_SPOTS = [{ x: 6, y: 4 }, { x: 13, y: 4 }, { x: 6, y: 10 }, { x: 13, y: 10 }];
 const LEAF_RESPAWN_TIME = 40;
+const TRIAL_STAGE_MAX = 10;
 
 // ---- エンティティクラス ----
 class Player {
@@ -725,6 +769,7 @@ let bestWave = 0;
 let dungeonSpawned = false;
 let booksSpawned = false;
 let leavesSpawned = false;
+let trialSpawnedThisRoom = false;
 let leafSpotTimer = [0, 0, 0, 0];
 let courtyardDefeated = [], dungeon1Defeated = [], dungeon2Defeated = [];
 let autosaveT = 5;
@@ -833,7 +878,8 @@ function freshQuest() {
     hunterQuestStarted: false, hunterQuestCompleted: false,
     bookQuestStarted: false, booksCollected: 0, bookQuestCompleted: false,
     dungeonUnlocked: false, dungeonBossDefeated: false, dungeonRewardGiven: false,
-    leafQuestStarted: false, leavesCollected: 0, leafQuestCompleted: false
+    leafQuestStarted: false, leavesCollected: 0, leafQuestCompleted: false,
+    trialStage: 0, trialsRewardGiven: false
   };
 }
 function makeSpawnedFairies(spawnDefs, defeatedArr) {
@@ -860,6 +906,8 @@ function rebuildWorld() {
   booksSpawned = false;
   leavesSpawned = false;
   leafSpotTimer = [0, 0, 0, 0];
+  trialSpawnedThisRoom = false;
+  SCENES.trial.map[0][10] = '#';
   projectiles = []; enemyProjectiles = []; particles = []; floatingTexts = []; dialogue = null; doorCooldown = 0.5;
   waveActive = false; waveNumber = 0; waveRestT = 0; waveBannerT = 0; waveBannerText = '';
   shakeT = 0; shakeMag = 0;
@@ -1060,6 +1108,70 @@ function endWaveRun() {
   saveGame();
 }
 
+function trialStageComposition(stage) {
+  const count = Math.min(2 + Math.ceil(stage / 2), 7);
+  const shadowChance = Math.max(0, Math.min(0.9, (stage - 4) * 0.18));
+  const basicTypes = ['leaf', 'water', 'star'];
+  const list = [];
+  for (let i = 0; i < count; i++) {
+    list.push(Math.random() < shadowChance ? 'shadow' : basicTypes[Math.floor(Math.random() * basicTypes.length)]);
+  }
+  return list;
+}
+function spawnTrialStage(stage) {
+  const map = SCENES.trial.map;
+  map[0][10] = '#';
+  const mult = 1 + (stage - 1) * 0.14;
+  const list = trialStageComposition(stage).map(type => {
+    const spot = randomWalkableSpot(map);
+    const f = new Fairy(type, spot.x, spot.y);
+    f.hp = Math.round(f.hp * mult); f.maxHp = f.hp;
+    f.speed *= (1 + (stage - 1) * 0.02);
+    f.contactDamage = Math.round(f.contactDamage * mult);
+    f.dmgMult = mult;
+    return f;
+  });
+  worldEntities.trial.fairies = list;
+  worldEntities.trial.items = [];
+  waveBannerText = `第 ${stage} の間`;
+  waveBannerT = 1.6;
+  trialSpawnedThisRoom = true;
+  playTone(440, 0.15, 'square');
+}
+function startTrialCorridor() {
+  quest.trialStage = 1;
+  worldEntities.trial.fairies = [];
+  trialSpawnedThisRoom = false;
+  currentSceneKey = 'trial';
+  player.x = toPx(10) + (TILE - player.w) / 2;
+  player.y = toPx(ROWS - 2) + (TILE - player.h) / 2;
+  saveGame();
+}
+function advanceTrialStage() {
+  // Reset the exit door immediately (not just when the next stage spawns) so a still-open 'D'
+  // tile can never be walked onto twice in a row and double-advance the stage counter.
+  SCENES.trial.map[0][10] = '#';
+  worldEntities.trial.fairies = [];
+  if (quest.trialStage >= TRIAL_STAGE_MAX) {
+    quest.trialStage = TRIAL_STAGE_MAX + 1;
+    if (!quest.trialsRewardGiven) {
+      quest.trialsRewardGiven = true;
+      player.power += 25; player.maxHp += 50; player.hp = player.maxHp;
+      addFloatingText(player.cx, player.y - 24, '全ステージ制覇! 力+25 HP+50', '#ffe066');
+      shake(6, 0.3);
+    }
+    player.x = toPx(10) + (TILE - player.w) / 2;
+    player.y = toPx(ROWS - 2) + (TILE - player.h) / 2;
+    saveGame();
+    return;
+  }
+  quest.trialStage++;
+  trialSpawnedThisRoom = false;
+  player.x = toPx(10) + (TILE - player.w) / 2;
+  player.y = toPx(ROWS - 2) + (TILE - player.h) / 2;
+  saveGame();
+}
+
 function getMoveVector() {
   let dx = 0, dy = 0;
   if (keys.ArrowLeft || keys.KeyA) dx -= 1;
@@ -1086,7 +1198,10 @@ function update(dt) {
     if (doorCooldown <= 0) {
       const tx = Math.floor(player.cx / TILE), ty = Math.floor(player.cy / TILE);
       const tile = scene.map[ty] && scene.map[ty][tx];
-      if (tile === 'D') {
+      if (currentSceneKey === 'trial' && tx === 10 && ty === 0 && tile === 'D') {
+        advanceTrialStage();
+        doorCooldown = 0.5;
+      } else if (tile === 'D') {
         const doorDef = scene.doors.find(d => d.x === tx && d.y === ty);
         if (doorDef) {
           if (currentSceneKey === 'forest' && waveActive) endWaveRun();
@@ -1095,6 +1210,21 @@ function update(dt) {
           player.y = toPx(doorDef.entry.y) + (TILE - player.h) / 2;
           doorCooldown = 0.5;
           saveGame();
+        }
+      }
+    }
+
+    if (currentSceneKey === 'trial' && quest.trialStage >= 1 && quest.trialStage <= TRIAL_STAGE_MAX) {
+      const doorOpen = SCENES.trial.map[0][10] === 'D';
+      if (!doorOpen && worldEntities.trial.fairies.length === 0) {
+        if (!trialSpawnedThisRoom) {
+          spawnTrialStage(quest.trialStage);
+        } else {
+          SCENES.trial.map[0][10] = 'D';
+          waveBannerText = `第 ${quest.trialStage} の間 クリア! 扉が開いた`;
+          waveBannerT = 1.8;
+          playTone(660, 0.15, 'triangle'); playTone(880, 0.2, 'triangle');
+          shake(3, 0.2);
         }
       }
     }
@@ -1314,6 +1444,7 @@ function drawFloor(px, py, tx, ty) {
   else if (currentSceneKey === 'forest') { c1 = '#243a24'; c2 = '#1f321f'; }
   else if (currentSceneKey === 'dungeon1' || currentSceneKey === 'dungeon2') { c1 = '#332b45'; c2 = '#2c2438'; }
   else if (currentSceneKey === 'greenhouse') { c1 = '#dff0d8'; c2 = '#d0e8cc'; }
+  else if (currentSceneKey === 'trial') { c1 = '#6b5a3a'; c2 = '#5f4f32'; }
   ctx.fillStyle = dark ? c1 : c2;
   ctx.fillRect(px, py, TILE, TILE);
   if (currentSceneKey === 'courtyard' && (tx * 31 + ty * 17) % 7 === 0) {
@@ -1882,6 +2013,25 @@ function drawHUD() {
       ctx.fillText('森の番人ノアに話しかけよう', fx + 12, fy + 20);
       ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif';
       ctx.fillText(`最高記録: 第 ${bestWave} 波`, fx + 12, fy + 40);
+    }
+  }
+
+  if (currentSceneKey === 'trial') {
+    const fx = WIDTH - 230, fy = qy + qh + 10, fw = 214, fh = 54;
+    ctx.fillStyle = 'rgba(20,10,30,0.6)'; roundRect(fx, fy, fw, fh, 8); ctx.fill();
+    ctx.fillStyle = '#ffb85f'; ctx.font = 'bold 13px sans-serif';
+    if (quest.trialStage === 0) {
+      ctx.fillText('修行僧レンに話しかけよう', fx + 12, fy + 20);
+    } else if (quest.trialStage > TRIAL_STAGE_MAX) {
+      ctx.fillText('全ステージ制覇!', fx + 12, fy + 20);
+      ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif';
+      ctx.fillText('おめでとう!', fx + 12, fy + 40);
+    } else {
+      const alive = worldEntities.trial.fairies.filter(f => !f.dead).length;
+      const doorOpen = SCENES.trial.map[0][10] === 'D';
+      ctx.fillText(`第 ${quest.trialStage} / ${TRIAL_STAGE_MAX} の間`, fx + 12, fy + 20);
+      ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif';
+      ctx.fillText(doorOpen ? '扉が開いた! 奥へ進もう' : `残り ${alive} 体`, fx + 12, fy + 40);
     }
   }
 
