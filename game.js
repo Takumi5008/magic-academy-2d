@@ -38,6 +38,14 @@ const ACHIEVEMENTS = [
   { id: 'trials', name: '修行完了', desc: '修行の回廊を全10ステージ制覇した', check: () => quest && quest.trialStage > TRIAL_STAGE_MAX },
   { id: 'treasures', name: '秘宝発見者', desc: '学院に隠された秘宝を全て見つけた', check: () => quest && TREASURE_SPOTS && quest.treasuresFound.length >= TREASURE_SPOTS.length }
 ];
+const TITLE_TIERS = [
+  { name: '新入生', desc: 'まだ何も始まっていない' },
+  { name: '見習い魔法使い', desc: '先生の結晶集めクエストを開始した' },
+  { name: '結晶収集者', desc: '魔法結晶を3つ集めた' },
+  { name: '一人前の魔法使い', desc: '妖精の女王を討伐した' },
+  { name: '学院の英雄', desc: '闇の魔導士を討伐した' },
+  { name: '伝説の魔法使い', desc: '残された使い魔・星の番人アストラの討伐、秘宝コンプ、修行の回廊、蔵書整理を全て達成した' }
+];
 function playerTitle(q) {
   if (!q) return '新入生';
   if (q.familiarDefeated && q.astraDefeated && q.treasureRewardGiven && q.trialStage > TRIAL_STAGE_MAX && q.kentBookQuestCompleted) return '伝説の魔法使い';
@@ -275,7 +283,26 @@ function teacherLines(quest) {
     complete: () => {}
   };
 }
+const ALISA_AFFINITY_TIERS = [
+  { count: 5, line: 'いつも話しかけてくれてありがとう! ちょっと嬉しいな。', power: 2, hp: 0 },
+  { count: 15, line: 'こんなに仲良くなれるとは思わなかったよ。私のお守り、あげる!', power: 3, hp: 10 },
+  { count: 30, line: 'もう腐れ縁だね! これからもずっと一緒に頑張ろう!', power: 5, hp: 15 }
+];
 function alisaLines(quest) {
+  quest.alisaTalkCount = (quest.alisaTalkCount || 0) + 1;
+  quest.alisaAffinityGiven = quest.alisaAffinityGiven || [];
+  const dueTier = ALISA_AFFINITY_TIERS.find(t => quest.alisaTalkCount >= t.count && !quest.alisaAffinityGiven.includes(t.count));
+  if (dueTier) {
+    return {
+      lines: [dueTier.line],
+      complete: () => {
+        quest.alisaAffinityGiven.push(dueTier.count);
+        player.power += dueTier.power;
+        if (dueTier.hp) { player.maxHp += dueTier.hp; player.hp = player.maxHp; }
+        addFloatingText(player.cx, player.y - 20, `アリサとの友情が深まった! (${dueTier.power ? '力+' + dueTier.power : ''}${dueTier.hp ? ' HP+' + dueTier.hp : ''})`, '#ff8fc4');
+      }
+    };
+  }
   if (!quest.started) return { lines: ['先生が中庭のことで悩んでるみたいだよ。', '教室に行って話しかけてみたら?'], complete: () => {} };
   if (quest.crystals < quest.required) return { lines: [`頑張って! あと${quest.required - quest.crystals}個だよ!`, '妖精たち、心なしかいつもよりピリピリしてる気がするんだよね……'], complete: () => {} };
   if (!quest.completed) return { lines: ['結晶、全部集まったね! 先生に届けに行こう!'], complete: () => {} };
@@ -304,7 +331,9 @@ function alisaLines(quest) {
   }
   if (quest.dungeonUnlocked && !quest.dungeonBossDefeated) return { lines: ['地下迷宮に行ったの!? 大丈夫、無理しないでね。', '私はここで待ってるから!'], complete: () => {} };
   if (quest.dungeonBossDefeated && !quest.dungeonRewardGiven) return { lines: ['闇の魔導士を倒したって本当!? すごすぎるよ!', '早くガロンさんに報告しなきゃ!'], complete: () => {} };
-  if (quest.dungeonRewardGiven) return { lines: ['闇の魔導士を倒したなんて、本当にすごいよ!', 'これで学院はやっと平和だね。私、ずっと応援してたんだから!'], complete: () => {} };
+  if (quest.dungeonRewardGiven && !quest.alisaCongratsGiven) {
+    return { lines: ['闇の魔導士を倒したなんて、本当にすごいよ!', 'これで学院はやっと平和だね。私、ずっと応援してたんだから!'], complete: () => { quest.alisaCongratsGiven = true; } };
+  }
   return {
     lines: pickFlavor([
       ['学院いちの魔法使いだね、あなたは!'],
@@ -359,6 +388,33 @@ function minaLines(quest) {
   if (!quest.dungeonBossDefeated) {
     return { lines: ['地下は危険よ。無理しないでね。', '何か分かったら、私にも教えてほしいわ。'], complete: () => {} };
   }
+  if (quest.astraDefeated && !quest.minaHistoryStarted) {
+    return {
+      lines: [
+        '星の番人まで倒したの!? 本当にどこまで強くなるつもりなの……。',
+        '実はね、学院の正式な歴史書を書きたいと思ってるの。でも私一人じゃ資料が足りなくて。',
+        'ガロンさん、フローラ先輩、ノアさんに、それぞれ学院にまつわる思い出を聞いてきてくれない?',
+        '3人分の証言が集まったら、歴史書の完成にきっと役立つはずよ。'
+      ],
+      complete: () => { quest.minaHistoryStarted = true; }
+    };
+  }
+  if (quest.minaHistoryStarted && !quest.minaHistoryCompleted) {
+    if (quest.testimonies.length >= 3) {
+      return {
+        lines: [
+          '3人分の証言、全部集めてくれたのね! ありがとう!',
+          'これで学院史の第一歩が書けそうだわ。あなたのことも、しっかり書き記しておくから。',
+          'お礼に、私が持ってた古い魔導書のかけらをあげる。(魔法威力 +10 / 最大HP +20)'
+        ],
+        complete: () => {
+          quest.minaHistoryCompleted = true;
+          player.power += 10; player.maxHp += 20; player.hp = player.maxHp;
+        }
+      };
+    }
+    return { lines: [`証言、まだ ${quest.testimonies.length}/3 人分ね。`, 'ガロンさん、フローラ先輩、ノアさんに話しかけてみて。'], complete: () => {} };
+  }
   return {
     lines: pickFlavor([
       ['闇の魔導士のこと、聞いたわ……。記録に「レイン」という名の天才魔法使いがいたと書いてあったの。', 'まさか、彼だったなんて。あなたのおかげで、学院は本当の意味で平和になったのね。ありがとう。'],
@@ -389,10 +445,23 @@ function noahLines(quest) {
       }
     };
   }
+  if (quest.minaHistoryStarted && !quest.testimonies.includes('noah')) {
+    return {
+      lines: [
+        'ミナから聞いた。学院の歴史を書き記したいんだったな。',
+        '俺がこの森の番人になったのは、まだ駆け出しの頃だ。妖精たちに何度も痛い目を見せられたよ。',
+        '今のお前を見てると、あの頃の自分を思い出す。……悪くない気分だ。'
+      ],
+      complete: () => { quest.testimonies.push('noah'); }
+    };
+  }
   const recordLine = bestWave > 0 ? `これまでの最高記録は第${bestWave}波だ。` : 'まだ記録はないな。';
   const dungeonLine = quest.dungeonBossDefeated ? '闇の魔導士を倒したそうだな。大したものだ。' : null;
+  const bossRushLine = quest.trialHardRewardGiven && !quest.bossRushCompleted
+    ? '……お前ならもう「ボスラッシュ」にも挑めるはずだ。俺の近くでRキーを押してみろ。'
+    : null;
   return {
-    lines: [dungeonLine, 'よく来たな、見習い魔法使いくん。', '妖精たちが次々と襲ってくる訓練を受けさせてやろう。', recordLine, '準備はいいか? 話し終えると同時に始まるぞ!'].filter(Boolean),
+    lines: [dungeonLine, 'よく来たな、見習い魔法使いくん。', '妖精たちが次々と襲ってくる訓練を受けさせてやろう。', recordLine, bossRushLine, '準備はいいか? 話し終えると同時に始まるぞ!'].filter(Boolean),
     complete: () => { startWaveRun(); }
   };
 }
@@ -506,6 +575,16 @@ function galonLines(quest) {
       triggerClear: true
     };
   }
+  if (quest.minaHistoryStarted && !quest.testimonies.includes('galon')) {
+    return {
+      lines: [
+        'ミナ嬢から話は聞いておる。学院の歴史、か。',
+        '儂が若い頃は、この迷宮も今のように穏やかではなかった。何度も命を落としかけたわい。',
+        'それでも、こうして見習いに道を託せる日が来たのだから……悪くない人生だったな。'
+      ],
+      complete: () => { quest.testimonies.push('galon'); }
+    };
+  }
   return {
     lines: pickFlavor([
       ['お前はもう、この学院の誇りだな。', '封印も安定した。もう妖精たちが暴れることもないだろう。'],
@@ -547,6 +626,16 @@ function floraLines(quest) {
       };
     }
     return { lines: [`癒しの葉、まだ ${quest.leavesCollected}/4 枚ね。`, '温室の中を探してみて。'], complete: () => {} };
+  }
+  if (quest.minaHistoryStarted && !quest.testimonies.includes('flora')) {
+    return {
+      lines: [
+        'ミナちゃんの歴史書のお手伝いね、もちろんいいわよ。',
+        '私がこの温室を任されたのは、まだ学院が今よりずっと殺風景だった頃なの。',
+        '一つ一つ花を植えて、少しずつ今の姿になったの。あなたが平和にしてくれた学院で、この花たちも喜んでると思うわ。'
+      ],
+      complete: () => { quest.testimonies.push('flora'); }
+    };
   }
   return {
     lines: pickFlavor([
@@ -758,7 +847,9 @@ const QUEST_LOG_ENTRIES = [
   { name: '修行の回廊(表)', status: () => quest.trialsRewardGiven ? '完了' : quest.trialStage > 0 ? '進行中' : '未着手' },
   { name: '修行の回廊(裏)', status: () => quest.trialHardRewardGiven ? '完了' : quest.trialHardUnlocked ? '進行中' : '未着手' },
   { name: '天文台/星の番人', status: () => quest.astraDefeated ? '完了' : quest.treasureRewardGiven ? '進行中' : '未着手' },
-  { name: 'ノアのウェーブ討伐', status: () => quest.noahQuestCompleted ? '完了' : quest.waveMilestone10 ? '進行中' : '未着手' }
+  { name: 'ノアのウェーブ討伐', status: () => quest.noahQuestCompleted ? '完了' : quest.waveMilestone10 ? '進行中' : '未着手' },
+  { name: 'ミナの学院史', status: () => quest.minaHistoryCompleted ? '完了' : quest.minaHistoryStarted ? '進行中' : '未着手' },
+  { name: 'ボスラッシュ', status: () => quest.bossRushCompleted ? '完了' : quest.trialHardRewardGiven ? '挑戦可能' : '未着手' }
 ];
 const SHOP_ITEMS = [
   {
@@ -784,25 +875,40 @@ const SHOP_ITEMS = [
     cost: () => 100,
     canBuy: () => quest.bestiaryDefeated.length >= BESTIARY_TYPES.length && !quest.heroProofBought,
     apply: () => { quest.heroProofBought = true; player.power += 20; player.maxHp += 40; player.hp = player.maxHp; }
+  },
+  {
+    key: '5', name: 'ポーション上限+1', desc: '星屑で作られた特別な器 (最大所持数+1, 3回まで購入可)', currency: 'stardust',
+    cost: () => 30 + quest.shopStardustPotionLevel * 20,
+    canBuy: () => quest.astraDefeated && quest.shopStardustPotionLevel < 3,
+    apply: () => { player.maxPotions += 1; quest.shopStardustPotionLevel++; }
+  },
+  {
+    key: '6', name: '流星の秘宝', desc: '星屑を極限まで集めた者だけの証 (魔法威力+15 / 最大HP+30, 一度だけ)', currency: 'stardust',
+    cost: () => 80,
+    canBuy: () => quest.astraDefeated && !quest.meteorTreasureBought,
+    apply: () => { quest.meteorTreasureBought = true; player.power += 15; player.maxHp += 30; player.hp = player.maxHp; }
   }
 ];
 function tryShopPurchase(key) {
   const item = SHOP_ITEMS.find(s => s.key === key);
   if (!item) return;
+  const useStardust = item.currency === 'stardust';
+  const currencyName = useStardust ? '星屑' : '妖精のかけら';
   if (!item.canBuy()) {
     shopMessage = 'これ以上は購入できない'; shopMessageT = 1.5;
     playTone(220, 0.12, 'square');
     return;
   }
   const cost = item.cost();
-  if (fairyShards < cost) {
-    shopMessage = '妖精のかけらが足りない'; shopMessageT = 1.5;
+  const balance = useStardust ? stardust : fairyShards;
+  if (balance < cost) {
+    shopMessage = `${currencyName}が足りない`; shopMessageT = 1.5;
     playTone(220, 0.12, 'square');
     return;
   }
-  fairyShards -= cost;
+  if (useStardust) stardust -= cost; else fairyShards -= cost;
   item.apply();
-  shopMessage = `${item.name}を購入した! (-${cost}かけら)`; shopMessageT = 1.5;
+  shopMessage = `${item.name}を購入した! (-${cost}${currencyName})`; shopMessageT = 1.5;
   playTone(880, 0.1, 'sine'); playTone(1100, 0.1, 'sine');
 }
 
@@ -1100,6 +1206,8 @@ let queenSpawned = false;
 let fairiesDefeated = 0;
 let totalKills = 0;
 let fairyShards = 0;
+let stardust = 0;
+let bossRushActive = false, bossRushIndex = 0, bossRushNoHit = true;
 let observatorySpawned = false;
 let shopMessage = '', shopMessageT = 0;
 let achievementBannerText = '';
@@ -1164,11 +1272,20 @@ const SCENE_BGM = {
   dungeon1: { notes: [164.8, 196.0, 246.9, 311.1], lfoSpeed: 0.2, type: 'square' },
   dungeon2: { notes: [130.8, 164.8, 196.0, 261.6], lfoSpeed: 0.25, type: 'square' },
   dungeon3: { notes: [110.0, 138.6, 164.8, 220.0], lfoSpeed: 0.22, type: 'sine' },
-  observatory: { notes: [293.7, 370.0, 440.0, 554.4], lfoSpeed: 0.08, type: 'sine' }
+  observatory: { notes: [293.7, 370.0, 440.0, 554.4], lfoSpeed: 0.08, type: 'sine' },
+  boss: { notes: [98.0, 116.5, 146.8, 184.9], lfoSpeed: 0.45, type: 'sawtooth' }
 };
+function hasLiveBossInScene() {
+  const ents = worldEntities[currentSceneKey];
+  return !!(ents && ents.fairies.some(f => f.isBoss && !f.dead));
+}
+function currentBgmThemeKey() {
+  return hasLiveBossInScene() ? 'boss' : currentSceneKey;
+}
 function startBGM() {
   if (!audioCtx || bgm) return;
-  const theme = SCENE_BGM[currentSceneKey] || SCENE_BGM.courtyard;
+  const themeKey = currentBgmThemeKey();
+  const theme = SCENE_BGM[themeKey] || SCENE_BGM.courtyard;
   const master = audioCtx.createGain();
   master.gain.value = 1;
   master.connect(audioCtx.destination);
@@ -1182,17 +1299,18 @@ function startBGM() {
     osc.start();
     return { osc, gain: g, phase: i * 1.3 };
   });
-  bgm = { master, oscs, startTime: audioCtx.currentTime, sceneKey: currentSceneKey, lfoSpeed: theme.lfoSpeed };
+  bgm = { master, oscs, startTime: audioCtx.currentTime, themeKey, lfoSpeed: theme.lfoSpeed };
 }
 function updateBGM() {
   if (!bgm) return;
-  if (bgm.sceneKey !== currentSceneKey) {
-    const theme = SCENE_BGM[currentSceneKey] || SCENE_BGM.courtyard;
+  const themeKey = currentBgmThemeKey();
+  if (bgm.themeKey !== themeKey) {
+    const theme = SCENE_BGM[themeKey] || SCENE_BGM.courtyard;
     bgm.oscs.forEach((o, i) => {
       o.osc.frequency.setTargetAtTime(theme.notes[i] || theme.notes[0], audioCtx.currentTime, 0.4);
       o.osc.type = theme.type;
     });
-    bgm.sceneKey = currentSceneKey;
+    bgm.themeKey = themeKey;
     bgm.lfoSpeed = theme.lfoSpeed;
   }
   const t = audioCtx.currentTime - bgm.startTime;
@@ -1256,7 +1374,11 @@ function freshQuest() {
     waveMilestone10: false, waveMilestone20: false, waveMilestone30: false,
     shopPowerLevel: 0, shopHpLevel: 0,
     achievementBonusGiven: false,
-    heroProofBought: false
+    heroProofBought: false,
+    alisaTalkCount: 0, alisaAffinityGiven: [], alisaCongratsGiven: false,
+    minaHistoryStarted: false, testimonies: [], minaHistoryCompleted: false,
+    bossRushCompleted: false, bossRushNoHit: false,
+    shopStardustPotionLevel: 0, meteorTreasureBought: false
   };
 }
 function makeSpawnedFairies(spawnDefs, defeatedArr) {
@@ -1296,6 +1418,7 @@ function rebuildWorld() {
   SCENES.classroom.map[0][10] = '#';
   projectiles = []; enemyProjectiles = []; particles = []; floatingTexts = []; dialogue = null; doorCooldown = 0.5;
   waveActive = false; waveNumber = 0; waveRestT = 0; waveBannerT = 0; waveBannerText = '';
+  bossRushActive = false; bossRushIndex = 0; bossRushNoHit = true;
   shakeT = 0; shakeMag = 0;
 }
 function initWorld() {
@@ -1304,6 +1427,8 @@ function initWorld() {
   fairiesDefeated = 0;
   totalKills = 0;
   fairyShards = 0;
+  stardust = 0;
+  bossRushActive = false; bossRushIndex = 0; bossRushNoHit = true;
   uiPanel = null;
   currentSceneKey = 'courtyard';
   player = new Player(toPx(10) + (TILE - 28) / 2, toPx(12) + (TILE - 28) / 2);
@@ -1316,7 +1441,7 @@ function saveGame() {
   try {
     if (typeof localStorage === 'undefined' || !player || !quest) return;
     const data = {
-      quest, fairiesDefeated, bestWave, totalKills, fairyShards,
+      quest, fairiesDefeated, bestWave, totalKills, fairyShards, stardust,
       courtyardDefeated, dungeon1Defeated, dungeon2Defeated, dungeon3Defeated,
       currentSceneKey,
       player: {
@@ -1343,6 +1468,7 @@ function applySaveData(data) {
   fairiesDefeated = data.fairiesDefeated || 0;
   totalKills = data.totalKills || 0;
   fairyShards = data.fairyShards || 0;
+  stardust = data.stardust || 0;
   uiPanel = null;
   bestWave = Math.max(bestWave, data.bestWave || 0);
   courtyardDefeated = data.courtyardDefeated || [];
@@ -1544,6 +1670,43 @@ function endWaveRun() {
   saveGame();
 }
 
+const BOSS_RUSH_ORDER = ['queen', 'darkmage', 'familiar', 'astra'];
+function spawnBossRushFighter() {
+  const type = BOSS_RUSH_ORDER[bossRushIndex];
+  const f = new Fairy(type, toPx(10) + 6, toPx(7) + 6, { noElite: true });
+  f.hp = Math.round(f.hp * 0.7); f.maxHp = f.hp;
+  worldEntities.forest.fairies = [f];
+  waveBannerText = `ボスラッシュ ${bossRushIndex + 1}/${BOSS_RUSH_ORDER.length}`;
+  waveBannerT = 1.8;
+  playTone(440, 0.18, 'square');
+}
+function startBossRush() {
+  if (bossRushActive || waveActive) return;
+  bossRushActive = true;
+  bossRushIndex = 0;
+  bossRushNoHit = true;
+  spawnBossRushFighter();
+}
+function advanceBossRush() {
+  bossRushIndex++;
+  if (bossRushIndex >= BOSS_RUSH_ORDER.length) {
+    bossRushActive = false;
+    worldEntities.forest.fairies = [];
+    quest.bossRushCompleted = true;
+    player.power += 25; player.maxHp += 40; player.hp = player.maxHp;
+    addFloatingText(player.cx, player.y - 30, 'ボスラッシュ制覇! 力+25 HP+40', '#ffe066');
+    waveBannerText = 'ボスラッシュ制覇!';
+    waveBannerT = 2.0;
+    if (bossRushNoHit && !quest.bossRushNoHit) {
+      quest.bossRushNoHit = true;
+      player.power += 10;
+      addFloatingText(player.cx, player.y - 50, '無傷制覇! さらに力+10', '#7fe0c9');
+    }
+    saveGame();
+    return;
+  }
+  spawnBossRushFighter();
+}
 function trialStageComposition(stage) {
   const count = Math.min(2 + Math.ceil(stage / 2), 7);
   const shadowChance = Math.max(0, Math.min(0.9, (stage - 4) * 0.18));
@@ -1641,6 +1804,8 @@ function checkAchievements() {
       quest.unlockedAchievements.push(a.id);
       achievementBannerText = `🏆 実績解除: ${a.name}`;
       achievementBannerT = 3.0;
+      spawnBurst(player.cx, player.cy, '#f2d34a', 24);
+      shake(3, 0.2);
       playTone(700, 0.1, 'triangle'); playTone(1050, 0.16, 'triangle');
     }
   });
@@ -1649,12 +1814,15 @@ function checkAchievements() {
     player.power += 15; player.maxHp += 30; player.hp = player.maxHp;
     achievementBannerText = '🏆 全実績コンプリート! 力+15 HP+30';
     achievementBannerT = 3.5;
+    spawnBurst(player.cx, player.cy, '#ffe066', 40);
+    shake(5, 0.3);
     playTone(880, 0.15, 'triangle'); playTone(1320, 0.2, 'triangle');
   }
 }
 function update(dt) {
   if (gameState === 'playing') {
     if (uiPanel) return;
+    const hpBeforeFrame = player.hp;
     autosaveT -= dt;
     if (autosaveT <= 0) { autosaveT = 5; saveGame(); }
     doorCooldown = Math.max(0, doorCooldown - dt);
@@ -1679,6 +1847,7 @@ function update(dt) {
         const doorDef = scene.doors.find(d => d.x === tx && d.y === ty);
         if (doorDef) {
           if (currentSceneKey === 'forest' && waveActive) endWaveRun();
+          if (currentSceneKey === 'forest' && bossRushActive) { bossRushActive = false; worldEntities.forest.fairies = []; }
           currentSceneKey = doorDef.to;
           player.x = toPx(doorDef.entry.x) + (TILE - player.w) / 2;
           player.y = toPx(doorDef.entry.y) + (TILE - player.h) / 2;
@@ -1867,13 +2036,18 @@ function update(dt) {
                 gainXp(200);
                 player.power += 12; player.maxHp += 25; player.hp = player.maxHp;
                 addFloatingText(f.cx, f.y - 40, 'レインの書斎の謎を解いた! 力+12 HP+25', '#8fd6c9');
-              } else if (f.type === 'astra' && !quest.astraDefeated) {
-                quest.astraDefeated = true;
-                gainXp(350);
-                player.power += 20; player.maxHp += 40; player.hp = player.maxHp;
-                if (!player.spells.includes('wind')) player.spells.push('wind');
-                addFloatingText(f.cx, f.y - 40, '「風」の魔法を会得した! 力+20 HP+40', '#b8ffb0');
+              } else if (f.type === 'astra') {
+                stardust += 50;
+                addFloatingText(f.cx, f.y - 55, '星屑+50', '#cfa6ff');
+                if (!quest.astraDefeated) {
+                  quest.astraDefeated = true;
+                  gainXp(350);
+                  player.power += 20; player.maxHp += 40; player.hp = player.maxHp;
+                  if (!player.spells.includes('wind')) player.spells.push('wind');
+                  addFloatingText(f.cx, f.y - 40, '「風」の魔法を会得した! 力+20 HP+40', '#b8ffb0');
+                }
               }
+              if (bossRushActive) advanceBossRush();
             } else {
               gainXp(15 + (waveActive ? waveNumber * 3 : 0));
               const dropX = f.x + (f.w - 16) / 2, dropY = f.y + (f.h - 16) / 2;
@@ -1965,7 +2139,12 @@ function update(dt) {
     floatingTexts.forEach(ft => { ft.y += ft.vy * dt; ft.life -= dt; });
     floatingTexts = floatingTexts.filter(ft => ft.life > 0);
 
-    if (player.hp <= 0) { endWaveRun(); gameState = 'gameover'; }
+    if (bossRushActive && player.hp < hpBeforeFrame) bossRushNoHit = false;
+    if (player.hp <= 0) {
+      endWaveRun();
+      if (bossRushActive) { bossRushActive = false; worldEntities.forest.fairies = []; }
+      gameState = 'gameover';
+    }
   } else if (gameState === 'dialogue') {
     dialogue.update(dt);
   }
@@ -2620,6 +2799,15 @@ function drawHUD() {
   ctx.fillStyle = '#7fe0c9';
   ctx.font = 'bold 10px sans-serif';
   ctx.fillText(`◆${fairyShards}`, sx + 8, 82);
+  sx += 58;
+
+  if (stardust > 0 || quest.astraDefeated) {
+    ctx.fillStyle = 'rgba(207,166,255,0.12)';
+    roundRect(sx + 4, 68, 54, 20, 4); ctx.fill();
+    ctx.fillStyle = '#cfa6ff';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText(`☆${stardust}`, sx + 8, 82);
+  }
 
   const qx = WIDTH - 230, qy = 16, qw = 214, qh = 76;
   ctx.fillStyle = 'rgba(20,10,30,0.6)'; roundRect(qx, qy, qw, qh, 8); ctx.fill();
@@ -2895,13 +3083,15 @@ function drawBestiaryPanel() {
 function drawShopPanel() {
   drawPanelBackdrop('行商人ミオの店');
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#7fe0c9'; ctx.font = 'bold 14px sans-serif';
-  ctx.fillText(`所持: 妖精のかけら ◆${fairyShards}`, WIDTH / 2, 66);
+  ctx.fillStyle = '#7fe0c9'; ctx.font = 'bold 13px sans-serif';
+  ctx.fillText(`妖精のかけら ◆${fairyShards}　　星屑 ☆${stardust}`, WIDTH / 2, 66);
   ctx.textAlign = 'left';
   const startY = 92, rowH = 46;
   SHOP_ITEMS.forEach((item, i) => {
     const y = startY + i * rowH;
-    const affordable = item.canBuy() && fairyShards >= item.cost();
+    const useStardust = item.currency === 'stardust';
+    const balance = useStardust ? stardust : fairyShards;
+    const affordable = item.canBuy() && balance >= item.cost();
     ctx.fillStyle = affordable ? 'rgba(127,224,201,0.12)' : 'rgba(255,255,255,0.05)';
     ctx.fillRect(120, y, WIDTH - 240, rowH - 8);
     ctx.fillStyle = affordable ? '#fff' : '#888';
@@ -2912,7 +3102,7 @@ function drawShopPanel() {
     ctx.fillText(item.desc, 132, y + 34);
     ctx.textAlign = 'right';
     ctx.fillStyle = item.canBuy() ? (affordable ? '#f2d34a' : '#a86') : '#666';
-    ctx.fillText(item.canBuy() ? `◆${item.cost()}` : '購入済上限', WIDTH - 132, y + 26);
+    ctx.fillText(item.canBuy() ? `${useStardust ? '☆' : '◆'}${item.cost()}` : '購入不可', WIDTH - 132, y + 26);
     ctx.textAlign = 'left';
   });
   if (shopMessageT > 0) {
@@ -2924,6 +3114,28 @@ function drawShopPanel() {
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '11px sans-serif';
   ctx.fillText('数字キーで購入 / F または Esc で店を出る', WIDTH / 2, HEIGHT - 20);
+  ctx.textAlign = 'left';
+}
+function drawTitleListPanel() {
+  drawPanelBackdrop('称号一覧 (T)');
+  const currentTier = TITLE_TIERS.findIndex(t => t.name === playerTitle(quest));
+  const startY = 84, rowH = 40;
+  TITLE_TIERS.forEach((t, i) => {
+    const unlocked = i <= currentTier;
+    const isCurrent = i === currentTier;
+    const y = startY + i * rowH;
+    ctx.fillStyle = isCurrent ? 'rgba(242,211,74,0.15)' : unlocked ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)';
+    ctx.fillRect(120, y, WIDTH - 240, rowH - 8);
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillStyle = isCurrent ? '#f2d34a' : unlocked ? '#fff' : '#555';
+    ctx.fillText(`${unlocked ? '★' : '☆'} ${t.name}`, 132, y + 16);
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = unlocked ? '#cbb8ff' : '#444';
+    ctx.fillText(t.desc, 132, y + 30);
+  });
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#7fe0c9'; ctx.font = '13px sans-serif';
+  ctx.fillText(`現在の称号: ${playerTitle(quest)}`, WIDTH / 2, startY + TITLE_TIERS.length * rowH + 16);
   ctx.textAlign = 'left';
 }
 function drawQuestLogPanel() {
@@ -2963,9 +3175,12 @@ function drawInventoryPanel() {
     `秘宝: ${quest.treasuresFound.length} / ${TREASURE_SPOTS.length}`,
     `迷い込んだ本: ${quest.misplacedBooksReturned} / 3`,
     `天文台の星の番人: ${quest.astraDefeated ? '討伐済み' : quest.treasureRewardGiven ? '挑戦可能' : '未発見'}`,
-    `討伐数: ${totalKills}　妖精のかけら: ${fairyShards}`,
+    `討伐数: ${totalKills}　妖精のかけら: ${fairyShards}　星屑: ${stardust}`,
     `図鑑: ${quest.bestiaryDefeated.length} / ${BESTIARY_TYPES.length}`,
-    `実績: ${quest.unlockedAchievements.length} / ${ACHIEVEMENTS.length}`
+    `実績: ${quest.unlockedAchievements.length} / ${ACHIEVEMENTS.length}`,
+    `アリサとの友情: ${quest.alisaAffinityGiven.length} / ${ALISA_AFFINITY_TIERS.length}`,
+    `ミナの学院史: ${quest.minaHistoryCompleted ? '完了' : quest.minaHistoryStarted ? `証言 ${quest.testimonies.length}/3` : '未着手'}`,
+    `ボスラッシュ: ${quest.bossRushCompleted ? (quest.bossRushNoHit ? '制覇(無傷)' : '制覇') : '未挑戦'}`
   ];
   ctx.font = '15px sans-serif';
   ctx.fillStyle = '#fff';
@@ -3012,6 +3227,7 @@ function drawUIPanel() {
   else if (uiPanel === 'bestiary') drawBestiaryPanel();
   else if (uiPanel === 'shop') drawShopPanel();
   else if (uiPanel === 'questlog') drawQuestLogPanel();
+  else if (uiPanel === 'titles') drawTitleListPanel();
 }
 function drawOverlay(title, sub, tint) {
   ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -3048,9 +3264,9 @@ function onKeyDown(e) {
   if (MOVE_KEYS.has(code) || code === 'Space' || code === 'Enter') e.preventDefault();
   keys[code] = true;
   if (uiPanel === 'shop') {
-    if (code === 'Digit1' || code === 'Digit2' || code === 'Digit3' || code === 'Digit4') { tryShopPurchase(code.slice(-1)); return; }
+    if (code === 'Digit1' || code === 'Digit2' || code === 'Digit3' || code === 'Digit4' || code === 'Digit5' || code === 'Digit6') { tryShopPurchase(code.slice(-1)); return; }
     if (code === 'Escape' || code === 'KeyF') { uiPanel = null; return; }
-    if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB' || code === 'KeyQ') return;
+    if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB' || code === 'KeyQ' || code === 'KeyT') return;
   }
   if (code === 'Digit1') { switchSpell('arcane'); return; }
   if (code === 'Digit2') { switchSpell('fire'); return; }
@@ -3058,10 +3274,17 @@ function onKeyDown(e) {
   if (code === 'Digit4') { switchSpell('wind'); return; }
   if (code === 'KeyE') { if (gameState === 'playing') { ensureAudio(); drinkPotion(); } return; }
   if (code === 'ShiftLeft' || code === 'ShiftRight') { if (gameState === 'playing' && !uiPanel) { ensureAudio(); tryDash(); } return; }
+  if (code === 'KeyR') {
+    if (gameState === 'playing' && !uiPanel && !waveActive && !bossRushActive) {
+      const npc = findNearestNpc(70);
+      if (npc && npc.name === '森の番人ノア' && quest.trialHardRewardGiven) { ensureAudio(); startBossRush(); }
+    }
+    return;
+  }
   if (code === 'KeyX') { if (gameState === 'playing' && !uiPanel && !e.repeat) { ensureAudio(); startCharge(); } return; }
-  if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB' || code === 'KeyQ') {
+  if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB' || code === 'KeyQ' || code === 'KeyT') {
     if (e.repeat) return;
-    const want = code === 'KeyI' ? 'inventory' : code === 'KeyM' ? 'map' : code === 'KeyC' ? 'achievements' : code === 'KeyB' ? 'bestiary' : 'questlog';
+    const want = code === 'KeyI' ? 'inventory' : code === 'KeyM' ? 'map' : code === 'KeyC' ? 'achievements' : code === 'KeyB' ? 'bestiary' : code === 'KeyQ' ? 'questlog' : 'titles';
     if (gameState === 'playing') { uiPanel = uiPanel === want ? null : want; }
     return;
   }
