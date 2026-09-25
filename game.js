@@ -745,6 +745,21 @@ const BESTIARY_TYPES = [
   { type: 'familiar', name: '残された使い魔', desc: 'レインの書斎に眠るミニボス' },
   { type: 'astra', name: '星の番人アストラ', desc: '天文台に眠る最強の守護者' }
 ];
+const QUEST_LOG_ENTRIES = [
+  { name: '魔法結晶集め', status: () => quest.completed ? '完了' : quest.started ? '進行中' : '未着手' },
+  { name: '妖精の女王討伐', status: () => quest.queenQuestCompleted ? '完了' : quest.queenQuestStarted ? '進行中' : '未着手' },
+  { name: '古い魔法書探し', status: () => quest.bookQuestCompleted ? '完了' : quest.bookQuestStarted ? '進行中' : '未着手' },
+  { name: '妖精ハンター', status: () => quest.hunterQuestCompleted ? '完了' : quest.hunterQuestStarted ? '進行中' : '未着手' },
+  { name: '闇の魔導士討伐', status: () => quest.dungeonRewardGiven ? '完了' : quest.dungeonUnlocked ? '進行中' : '未着手' },
+  { name: '癒しの葉集め', status: () => quest.leafQuestCompleted ? '完了' : quest.leafQuestStarted ? '進行中' : '未着手' },
+  { name: '蔵書整理(ケント)', status: () => quest.kentBookQuestCompleted ? '完了' : quest.kentBookQuestStarted ? '進行中' : '未着手' },
+  { name: 'レインの書斎', status: () => quest.familiarDefeated ? '完了' : quest.dungeonRewardGiven ? '進行中' : '未着手' },
+  { name: '秘宝探し', status: () => quest.treasureRewardGiven ? '完了' : quest.treasuresFound.length > 0 ? '進行中' : '未着手' },
+  { name: '修行の回廊(表)', status: () => quest.trialsRewardGiven ? '完了' : quest.trialStage > 0 ? '進行中' : '未着手' },
+  { name: '修行の回廊(裏)', status: () => quest.trialHardRewardGiven ? '完了' : quest.trialHardUnlocked ? '進行中' : '未着手' },
+  { name: '天文台/星の番人', status: () => quest.astraDefeated ? '完了' : quest.treasureRewardGiven ? '進行中' : '未着手' },
+  { name: 'ノアのウェーブ討伐', status: () => quest.noahQuestCompleted ? '完了' : quest.waveMilestone10 ? '進行中' : '未着手' }
+];
 const SHOP_ITEMS = [
   {
     key: '1', name: 'ポーション', desc: 'HPを回復するポーションを1個購入する',
@@ -763,6 +778,12 @@ const SHOP_ITEMS = [
     cost: () => 10 + quest.shopHpLevel * 5,
     canBuy: () => true,
     apply: () => { player.maxHp += 10; player.hp += 10; quest.shopHpLevel++; }
+  },
+  {
+    key: '4', name: '英雄の証', desc: '図鑑を全て埋めた者だけが買える至宝 (魔法威力+20 / 最大HP+40, 一度だけ)',
+    cost: () => 100,
+    canBuy: () => quest.bestiaryDefeated.length >= BESTIARY_TYPES.length && !quest.heroProofBought,
+    apply: () => { quest.heroProofBought = true; player.power += 20; player.maxHp += 40; player.hp = player.maxHp; }
   }
 ];
 function tryShopPurchase(key) {
@@ -795,10 +816,29 @@ class Player {
     this.castPoseT = 0;
     this.spells = ['arcane']; this.currentSpell = 'arcane';
     this.potions = 0; this.maxPotions = DEFAULT_MAX_POTIONS;
+    this.spellUsage = { arcane: 0, fire: 0, ice: 0, wind: 0 };
+    this.dashCooldown = 0; this.dashingT = 0; this.dashVx = 0; this.dashVy = 0;
+    this.chargeT = 0; this.charging = false;
   }
   get cx() { return this.x + this.w / 2; }
   get cy() { return this.y + this.h / 2; }
+  spellLevel(spellType) {
+    return 1 + Math.floor((this.spellUsage[spellType] || 0) / 30);
+  }
+  spellLevelMult(spellType) {
+    return 1 + Math.min(0.3, Math.floor((this.spellUsage[spellType] || 0) / 30) * 0.05);
+  }
   update(dt, dx, dy, map) {
+    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    if (this.dashingT > 0) {
+      this.dashingT -= dt;
+      const nx = this.x + this.dashVx * dt;
+      if (!collides(map, nx, this.y, this.w, this.h)) this.x = nx;
+      const ny = this.y + this.dashVy * dt;
+      if (!collides(map, this.x, ny, this.w, this.h)) this.y = ny;
+      this.moving = true;
+      return;
+    }
     this.moving = dx !== 0 || dy !== 0;
     this.animT = this.moving ? this.animT + dt : 0;
     if (dx > 0) this.dir = 'right'; else if (dx < 0) this.dir = 'left';
@@ -811,7 +851,7 @@ class Player {
 }
 
 class Fairy {
-  constructor(type, x, y) {
+  constructor(type, x, y, opts) {
     this.type = type; this.x = x; this.y = y;
     this.isBoss = type === 'queen' || type === 'darkmage' || type === 'familiar' || type === 'astra';
     if (type === 'astra') { this.w = 48; this.h = 48; this.hp = 450; this.maxHp = 450; this.speed = 70; this.contactDamage = 30; }
@@ -821,6 +861,11 @@ class Fairy {
     else if (type === 'shadow') { this.w = 28; this.h = 28; this.hp = 90; this.maxHp = 90; this.speed = 58; this.contactDamage = 20; }
     else if (type === 'thunder') { this.w = 26; this.h = 26; this.hp = 55; this.maxHp = 55; this.speed = 55; this.contactDamage = 18; }
     else { this.w = 26; this.h = 26; this.hp = 60; this.maxHp = 60; this.speed = 50; this.contactDamage = 15; }
+    this.elite = !this.isBoss && !(opts && opts.noElite) && Math.random() < 0.08;
+    if (this.elite) {
+      this.hp = Math.round(this.hp * 2); this.maxHp = this.hp;
+      this.contactDamage = Math.round(this.contactDamage * 1.5);
+    }
     this.state = 'wander';
     this.vx = 0; this.vy = 0; this.dirTimer = 0; this.hitFlash = 0; this.dead = false; this.animT = Math.random() * 10;
     this.baseSpeed = this.speed; this.slowT = 0;
@@ -1209,7 +1254,9 @@ function freshQuest() {
     trialHardUnlocked: false, trialHardRewardGiven: false,
     noahQuestCompleted: false,
     waveMilestone10: false, waveMilestone20: false, waveMilestone30: false,
-    shopPowerLevel: 0, shopHpLevel: 0
+    shopPowerLevel: 0, shopHpLevel: 0,
+    achievementBonusGiven: false,
+    heroProofBought: false
   };
 }
 function makeSpawnedFairies(spawnDefs, defeatedArr) {
@@ -1276,7 +1323,8 @@ function saveGame() {
         x: player.x, y: player.y, dir: player.dir,
         level: player.level, xp: player.xp, xpToNext: player.xpToNext,
         power: player.power, maxHp: player.maxHp, hp: player.hp,
-        spells: player.spells, currentSpell: player.currentSpell, potions: player.potions, maxPotions: player.maxPotions
+        spells: player.spells, currentSpell: player.currentSpell, potions: player.potions, maxPotions: player.maxPotions,
+        spellUsage: player.spellUsage
       }
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -1309,7 +1357,8 @@ function applySaveData(data) {
     spells: data.player.spells && data.player.spells.length ? data.player.spells : ['arcane'],
     currentSpell: data.player.currentSpell || 'arcane',
     maxPotions: data.player.maxPotions || DEFAULT_MAX_POTIONS,
-    potions: Math.min(data.player.maxPotions || DEFAULT_MAX_POTIONS, data.player.potions || 0)
+    potions: Math.min(data.player.maxPotions || DEFAULT_MAX_POTIONS, data.player.potions || 0),
+    spellUsage: Object.assign({ arcane: 0, fire: 0, ice: 0, wind: 0 }, data.player.spellUsage || {})
   });
   rebuildWorld();
 }
@@ -1380,12 +1429,47 @@ function findAutoAimTarget(v) {
   });
   return best;
 }
-function tryCast() {
+const DASH_COOLDOWN = 1.4, DASH_DURATION = 0.18, DASH_SPEED_MULT = 3.2;
+function tryDash() {
+  if (gameState !== 'playing' || uiPanel) return;
+  if (player.dashCooldown > 0 || player.dashingT > 0) return;
+  const vecMap = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+  let dir = vecMap[player.dir];
+  const { dx, dy } = getMoveVector();
+  if (dx !== 0 || dy !== 0) { const len = Math.hypot(dx, dy) || 1; dir = { x: dx / len, y: dy / len }; }
+  player.dashingT = DASH_DURATION;
+  player.dashCooldown = DASH_COOLDOWN;
+  player.dashVx = dir.x * player.speed * DASH_SPEED_MULT;
+  player.dashVy = dir.y * player.speed * DASH_SPEED_MULT;
+  player.invuln = Math.max(player.invuln, DASH_DURATION + 0.1);
+  playTone(500, 0.08, 'triangle');
+}
+const CHARGE_MAX = 1.1, CHARGE_MIN = 0.35;
+function startCharge() {
+  if (gameState !== 'playing' || uiPanel) return;
+  if (player.charging) return;
+  player.charging = true;
+  player.chargeT = 0;
+}
+function releaseCharge() {
+  if (!player.charging) return;
+  player.charging = false;
+  const t = player.chargeT;
+  player.chargeT = 0;
+  if (gameState !== 'playing' || uiPanel) return;
+  if (t < CHARGE_MIN) return;
+  const frac = Math.min(1, t / CHARGE_MAX);
+  tryCast(1 + frac * 1.5, 1 + frac);
+  playTone(360 + frac * 300, 0.16, 'sawtooth');
+}
+function tryCast(chargeDmgMult, chargeRadiusMult) {
   if (player.castCooldown > 0) return;
   const def = SPELL_DEFS[player.currentSpell];
   const vecMap = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
   const v = vecMap[player.dir];
   const proj = new Projectile(player.cx + v.x * 16, player.cy + v.y * 16, v, player.currentSpell);
+  if (chargeDmgMult) { proj.chargeMult = chargeDmgMult; proj.r *= (chargeRadiusMult || 1); proj.charged = true; }
+  player.spellUsage[player.currentSpell] = (player.spellUsage[player.currentSpell] || 0) + 1;
   // soft auto-aim: cardinal-only aiming otherwise requires near-pixel-perfect alignment with a
   // constantly wandering target, which made combat feel unresponsive; snap onto a fairy that's
   // roughly ahead so a reasonably-aimed shot still connects.
@@ -1476,7 +1560,7 @@ function spawnTrialStage(stage) {
   const mult = 1 + (stage - 1) * 0.14;
   const list = trialStageComposition(stage).map(type => {
     const spot = randomWalkableSpot(map);
-    const f = new Fairy(type, spot.x, spot.y);
+    const f = new Fairy(type, spot.x, spot.y, { noElite: true });
     f.hp = Math.round(f.hp * mult); f.maxHp = f.hp;
     f.speed *= (1 + (stage - 1) * 0.02);
     f.contactDamage = Math.round(f.contactDamage * mult);
@@ -1560,6 +1644,13 @@ function checkAchievements() {
       playTone(700, 0.1, 'triangle'); playTone(1050, 0.16, 'triangle');
     }
   });
+  if (quest.unlockedAchievements.length >= ACHIEVEMENTS.length && !quest.achievementBonusGiven) {
+    quest.achievementBonusGiven = true;
+    player.power += 15; player.maxHp += 30; player.hp = player.maxHp;
+    achievementBannerText = '🏆 全実績コンプリート! 力+15 HP+30';
+    achievementBannerT = 3.5;
+    playTone(880, 0.15, 'triangle'); playTone(1320, 0.2, 'triangle');
+  }
 }
 function update(dt) {
   if (gameState === 'playing') {
@@ -1576,6 +1667,7 @@ function update(dt) {
     player.castCooldown = Math.max(0, player.castCooldown - dt);
     player.invuln = Math.max(0, player.invuln - dt);
     player.castPoseT = Math.max(0, player.castPoseT - dt);
+    if (player.charging) player.chargeT = Math.min(CHARGE_MAX, player.chargeT + dt);
 
     if (doorCooldown <= 0) {
       const tx = Math.floor(player.cx / TILE), ty = Math.floor(player.cy / TILE);
@@ -1741,7 +1833,7 @@ function update(dt) {
         const pBox = { x: p.x - p.r, y: p.y - p.r, w: p.r * 2, h: p.r * 2 };
         if (rectsOverlap(pBox, f)) {
           const spellDef = SPELL_DEFS[p.spellType] || SPELL_DEFS.arcane;
-          const dmg = Math.max(1, Math.round(player.power * spellDef.dmgMult));
+          const dmg = Math.max(1, Math.round(player.power * spellDef.dmgMult * player.spellLevelMult(p.spellType) * (p.chargeMult || 1)));
           f.hp -= dmg; f.hitFlash = 0.2;
           if (p.hitFairies) {
             p.hitFairies.push(f);
@@ -1755,11 +1847,15 @@ function update(dt) {
             f.dead = true;
             totalKills++;
             if (!quest.bestiaryDefeated.includes(f.type)) quest.bestiaryDefeated.push(f.type);
-            const shardChance = f.isBoss ? 1.0 : 0.5;
+            const shardChance = f.isBoss ? 1.0 : (f.elite ? 1.0 : 0.5);
             if (Math.random() < shardChance) {
-              liveEnts.items.push(new Shard(f.x + (f.w - 16) / 2, f.y + (f.h - 16) / 2, f.isBoss ? 5 : 1));
+              liveEnts.items.push(new Shard(f.x + (f.w - 16) / 2, f.y + (f.h - 16) / 2, f.isBoss ? 5 : (f.elite ? 3 : 1)));
             }
-            spawnBurst(f.cx, f.cy, fairyColor(f.type), f.isBoss ? 30 : 14);
+            if (f.elite) {
+              liveEnts.items.push(new Gear(f.x + (f.w - 16) / 2 + 12, f.y + (f.h - 16) / 2, Math.random() < 0.5 ? 'power' : 'hp'));
+              addFloatingText(f.cx, f.y - 20, 'エリート討伐!', '#ffd76b');
+            }
+            spawnBurst(f.cx, f.cy, fairyColor(f.type), f.isBoss ? 30 : (f.elite ? 20 : 14));
             if (f.isBoss) {
               addFloatingText(f.cx, f.y - 20, '討伐成功!', '#ffe066');
               playTone(880, 0.3, 'triangle');
@@ -2064,6 +2160,20 @@ function drawBlush(cx, y) {
   ctx.beginPath(); ctx.ellipse(cx + 7, y, 2.4, 1.5, 0, 0, Math.PI * 2); ctx.fill();
 }
 
+function drawChargeAura(p) {
+  const frac = Math.min(1, p.chargeT / CHARGE_MAX);
+  const def = SPELL_DEFS[p.currentSpell] || SPELL_DEFS.arcane;
+  const [r, g, b] = hexToRgb(def.color);
+  const cx = p.cx, cy = p.cy;
+  const radius = 10 + frac * 22;
+  ctx.save();
+  ctx.globalAlpha = 0.35 + frac * 0.4;
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  grad.addColorStop(0, `rgba(${r},${g},${b},0.7)`); grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
 function drawPlayer(p) {
   if (p.invuln > 0 && Math.floor(p.invuln * 12) % 2 === 0) return;
   const bob = p.moving ? Math.sin(p.animT * 10) * 2 : Math.sin(performance.now() / 400) * 1.5;
@@ -2168,6 +2278,12 @@ function drawFairyProcedural(f, isBoss) {
   const cx = f.x + f.w / 2, cy = f.y + f.h / 2 + bob;
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.beginPath(); ctx.ellipse(f.x + f.w / 2, f.y + f.h - 2, f.w / 2.4, isBoss ? 7 : 5, 0, 0, Math.PI * 2); ctx.fill();
+  if (f.elite) {
+    const eliteR = f.w / 1.6 + Math.sin(f.animT * 5) * 2;
+    ctx.strokeStyle = `rgba(255,215,107,${0.5 + Math.sin(f.animT * 5) * 0.2})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, eliteR, 0, Math.PI * 2); ctx.stroke();
+  }
   if (isBoss) {
     const auraR = (f.type === 'darkmage' ? 38 : 30) + Math.sin(f.animT * 3) * 4;
     const ac = fairyColor(f.type);
@@ -2444,6 +2560,7 @@ function drawScene() {
     drawables.push({ y: it.y + it.h, fn });
   });
   drawables.push({ y: player.y + player.h, fn: () => drawPlayer(player) });
+  if (player.charging) drawables.push({ y: player.y + player.h + 1, fn: () => drawChargeAura(player) });
   drawables.sort((a, b) => a.y - b.y);
   drawables.forEach(d => d.fn());
 
@@ -2485,7 +2602,8 @@ function drawHUD() {
     if (active) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; roundRect(sx, 68, 40, 20, 4); ctx.stroke(); }
     ctx.fillStyle = owned ? def.color : 'rgba(255,255,255,0.25)';
     ctx.font = 'bold 10px sans-serif';
-    ctx.fillText(`${spellKeys[sp]}:${owned ? def.label.slice(0, 2) : '?'}`, sx + 4, 82);
+    const lvlTag = owned ? `.${player.spellLevel(sp)}` : '';
+    ctx.fillText(`${spellKeys[sp]}:${owned ? def.label.slice(0, 2) : '?'}${lvlTag}`, sx + 4, 82);
     sx += 44;
   });
 
@@ -2808,6 +2926,24 @@ function drawShopPanel() {
   ctx.fillText('数字キーで購入 / F または Esc で店を出る', WIDTH / 2, HEIGHT - 20);
   ctx.textAlign = 'left';
 }
+function drawQuestLogPanel() {
+  drawPanelBackdrop('クエストログ (Q)');
+  const startY = 84, rowH = 34;
+  ctx.font = '13px sans-serif';
+  QUEST_LOG_ENTRIES.forEach((q, i) => {
+    const st = q.status();
+    const y = startY + i * rowH;
+    const color = st === '完了' ? '#7fe0c9' : st === '進行中' ? '#f2d34a' : '#666';
+    ctx.fillStyle = st === '完了' ? 'rgba(127,224,201,0.08)' : st === '進行中' ? 'rgba(242,211,74,0.08)' : 'rgba(255,255,255,0.03)';
+    ctx.fillRect(120, y, WIDTH - 240, rowH - 8);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(q.name, 132, y + 18);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = color;
+    ctx.fillText(st, WIDTH - 132, y + 18);
+    ctx.textAlign = 'left';
+  });
+}
 function drawInventoryPanel() {
   drawPanelBackdrop('ステータス (I)');
   const lines = [
@@ -2862,6 +2998,10 @@ function drawMapPanel() {
     ctx.textAlign = 'center';
     ctx.fillStyle = isHere ? '#fff' : '#cbb8ff'; ctx.font = isHere ? 'bold 13px sans-serif' : '12px sans-serif';
     ctx.fillText(SCENES[key].label, x, y + (pos.y <= 0 ? -22 : 30));
+    const hasTreasure = TREASURE_SPOTS.some((spot, i) => spot.scene === key && !quest.treasuresFound.includes(i));
+    const hasShop = SCENES[key].npcs.some(n => n.isShop);
+    if (hasTreasure) { ctx.fillStyle = '#f2d34a'; ctx.beginPath(); ctx.arc(x + 14, y - 12, 4, 0, Math.PI * 2); ctx.fill(); }
+    if (hasShop) { ctx.fillStyle = '#7fe0c9'; ctx.beginPath(); ctx.arc(x - 14, y - 12, 4, 0, Math.PI * 2); ctx.fill(); }
   });
   ctx.textAlign = 'left';
 }
@@ -2871,6 +3011,7 @@ function drawUIPanel() {
   else if (uiPanel === 'map') drawMapPanel();
   else if (uiPanel === 'bestiary') drawBestiaryPanel();
   else if (uiPanel === 'shop') drawShopPanel();
+  else if (uiPanel === 'questlog') drawQuestLogPanel();
 }
 function drawOverlay(title, sub, tint) {
   ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -2907,18 +3048,20 @@ function onKeyDown(e) {
   if (MOVE_KEYS.has(code) || code === 'Space' || code === 'Enter') e.preventDefault();
   keys[code] = true;
   if (uiPanel === 'shop') {
-    if (code === 'Digit1' || code === 'Digit2' || code === 'Digit3') { tryShopPurchase(code.slice(-1)); return; }
+    if (code === 'Digit1' || code === 'Digit2' || code === 'Digit3' || code === 'Digit4') { tryShopPurchase(code.slice(-1)); return; }
     if (code === 'Escape' || code === 'KeyF') { uiPanel = null; return; }
-    if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB') return;
+    if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB' || code === 'KeyQ') return;
   }
   if (code === 'Digit1') { switchSpell('arcane'); return; }
   if (code === 'Digit2') { switchSpell('fire'); return; }
   if (code === 'Digit3') { switchSpell('ice'); return; }
   if (code === 'Digit4') { switchSpell('wind'); return; }
   if (code === 'KeyE') { if (gameState === 'playing') { ensureAudio(); drinkPotion(); } return; }
-  if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB') {
+  if (code === 'ShiftLeft' || code === 'ShiftRight') { if (gameState === 'playing' && !uiPanel) { ensureAudio(); tryDash(); } return; }
+  if (code === 'KeyX') { if (gameState === 'playing' && !uiPanel && !e.repeat) { ensureAudio(); startCharge(); } return; }
+  if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB' || code === 'KeyQ') {
     if (e.repeat) return;
-    const want = code === 'KeyI' ? 'inventory' : code === 'KeyM' ? 'map' : code === 'KeyC' ? 'achievements' : 'bestiary';
+    const want = code === 'KeyI' ? 'inventory' : code === 'KeyM' ? 'map' : code === 'KeyC' ? 'achievements' : code === 'KeyB' ? 'bestiary' : 'questlog';
     if (gameState === 'playing') { uiPanel = uiPanel === want ? null : want; }
     return;
   }
@@ -2947,7 +3090,10 @@ function onKeyDown(e) {
     tryInteract();
   }
 }
-function onKeyUp(e) { keys[e.code] = false; }
+function onKeyUp(e) {
+  keys[e.code] = false;
+  if (e.code === 'KeyX') releaseCharge();
+}
 window.addEventListener('keydown', onKeyDown);
 window.addEventListener('keyup', onKeyUp);
 function canvasPos(e) {
