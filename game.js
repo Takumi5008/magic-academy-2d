@@ -11,7 +11,7 @@ const TILE = 40, COLS = 20, ROWS = 15;
 const WIDTH = COLS * TILE, HEIGHT = ROWS * TILE;
 const BLOCKING = new Set(['#', 'T', 'K', 'F', 'B', 'W', 'P', 'V']);
 const MOVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD']);
-const FAIRY_COLORS = { leaf: '#e0703f', water: '#4a9fd6', star: '#e0c040', queen: '#c77dff', shadow: '#4a3a6e', darkmage: '#8f2a4a', thunder: '#f2e04a', familiar: '#8fd6c9', astra: '#cfa6ff' };
+const FAIRY_COLORS = { leaf: '#e0703f', water: '#4a9fd6', star: '#e0c040', queen: '#c77dff', shadow: '#4a3a6e', darkmage: '#8f2a4a', thunder: '#f2e04a', familiar: '#8fd6c9', astra: '#cfa6ff', shadowself: '#2a1a3a' };
 // 妖精の種類ごとに使う3Dモデル由来スプライトのキー(star/queenはモデルなし=手続き型のまま)
 const FAIRY_SPRITE_KEY = { leaf: 'fire', water: 'water' };
 const MODEL_URLS = { fire: './assets/fire_fairy.glb', water: './assets/water_fairy.glb', castle: './assets/castle.glb' };
@@ -44,10 +44,12 @@ const TITLE_TIERS = [
   { name: '結晶収集者', desc: '魔法結晶を3つ集めた' },
   { name: '一人前の魔法使い', desc: '妖精の女王を討伐した' },
   { name: '学院の英雄', desc: '闇の魔導士を討伐した' },
-  { name: '伝説の魔法使い', desc: '残された使い魔・星の番人アストラの討伐、秘宝コンプ、修行の回廊、蔵書整理を全て達成した' }
+  { name: '伝説の魔法使い', desc: '残された使い魔・星の番人アストラの討伐、秘宝コンプ、修行の回廊、蔵書整理を全て達成した' },
+  { name: '学院創設者の再来', desc: '屋上で「もう一人の魔法使い」を打ち破り、真のエンディングを見た' }
 ];
 function playerTitle(q) {
   if (!q) return '新入生';
+  if (q.trueEndingSeen) return '学院創設者の再来';
   if (q.familiarDefeated && q.astraDefeated && q.treasureRewardGiven && q.trialStage > TRIAL_STAGE_MAX && q.kentBookQuestCompleted) return '伝説の魔法使い';
   if (q.dungeonRewardGiven) return '学院の英雄';
   if (q.queenQuestCompleted) return '一人前の魔法使い';
@@ -64,6 +66,13 @@ const TREASURE_SPOTS = [
   { scene: 'greenhouse', x: 16, y: 7 }
 ];
 const POTION_HEAL_RATIO = 0.35;
+const NEWSPAPER_SPOTS = [
+  { scene: 'courtyard', x: 16, y: 9, headline: '学院新聞 第1号', lore: '『今年も新入生が集結! 学院長は「今年は特に逸材揃いだ」と語る』' },
+  { scene: 'library', x: 11, y: 12, headline: '学院新聞 第2号', lore: '『図書室の蔵書が倍増。司書によれば「禁書庫」は未だ謎に包まれているという』' },
+  { scene: 'forest', x: 6, y: 11, headline: '学院新聞 第3号', lore: '『訓練の森で謎の光が目撃される。生徒会は「訓練中の魔法の光だろう」とコメント』' },
+  { scene: 'dungeon1', x: 3, y: 7, headline: '学院新聞 第4号', lore: '『地下迷宮の管理人ガロン氏、若い頃は「鉄壁のガロン」の異名を持つ剣士だったと判明』' },
+  { scene: 'greenhouse', x: 16, y: 10, headline: '学院新聞 第5号(最終号)', lore: '『温室のフローラ先輩が特別な花を育成中とのこと。開花が待たれる』' }
+];
 
 function toPx(t) { return t * TILE; }
 
@@ -194,6 +203,13 @@ function buildObservatory() {
   addBorder(map);
   map[ROWS - 1][10] = 'D';
   [[5, 5], [14, 5], [5, 9], [14, 9], [10, 3]].forEach(([x, y]) => map[y][x] = 'P');
+  return map;
+}
+function buildRooftop() {
+  const map = emptyMap();
+  addBorder(map);
+  map[ROWS - 1][10] = 'D';
+  [[4, 4], [15, 4], [4, 10], [15, 10]].forEach(([x, y]) => map[y][x] = 'P');
   return map;
 }
 function buildLibrary() {
@@ -421,6 +437,42 @@ function minaLines(quest) {
       ['最近は古い資料の整理をしてるの。落ち着いたら見せてあげるわね。'],
       ['修行の回廊、もう試した? あなたなら10の間も突破できると思うわ。'],
       ['あなたのおかげで、この学院はすっかり平和になったわね。']
+    ]),
+    complete: () => {}
+  };
+}
+function roseRooftopLines(quest) {
+  if (!quest.shadowSelfDefeated) {
+    return {
+      lines: [
+        'ここは学院の屋上よ。実はね、実績を全て達成した生徒だけがここに辿り着けるの。',
+        '……あら、あなたの前に、もう一人のあなたが立っているわね。',
+        '「もう一人の魔法使い」よ。あなた自身の影、あなたが乗り越えるべき最後の試練。',
+        '気をつけて。'
+      ],
+      complete: () => {}
+    };
+  }
+  if (!quest.trueEndingSeen) {
+    return {
+      lines: [
+        '……あなたは、自分自身にさえ打ち勝ったのね。',
+        '見習いとして入学したあなたが、ここまで成長するなんて、正直思っていなかったわ。',
+        'この学院に関わったすべての人が、きっとあなたに感謝していると思う。',
+        'さあ、最後に空を見てみましょう。あなたの物語の、ひとまずの終わりに。'
+      ],
+      complete: () => {
+        quest.trueEndingSeen = true;
+        creditsScrollT = 0;
+        gameState = 'credits';
+      }
+    };
+  }
+  return {
+    lines: pickFlavor([
+      ['屋上からの眺め、綺麗でしょう?'],
+      ['あなたのような生徒が、この学院にはまだまだ必要だわ。'],
+      ['ゆっくりしていってね。']
     ]),
     complete: () => {}
   };
@@ -769,8 +821,18 @@ const SCENES = {
   observatory: {
     label: '天文台',
     map: buildObservatory(),
-    doors: [{ x: 10, y: ROWS - 1, to: 'classroom', entry: { x: 10, y: 1 } }],
+    doors: [
+      { x: 10, y: ROWS - 1, to: 'classroom', entry: { x: 10, y: 1 } },
+      { x: 10, y: 0, to: 'rooftop', entry: { x: 10, y: ROWS - 2 } }
+    ],
     npcs: [],
+    enemySpawns: []
+  },
+  rooftop: {
+    label: '学院の屋上',
+    map: buildRooftop(),
+    doors: [{ x: 10, y: ROWS - 1, to: 'observatory', entry: { x: 10, y: 1 } }],
+    npcs: [{ x: 10, y: 4, name: 'ローズ先生', color: '#5b3fae', hairColor: '#3a2560', hairStyle: 'bun', eyeColor: '#c9a2ec', getLines: roseRooftopLines }],
     enemySpawns: []
   },
   library: {
@@ -905,7 +967,10 @@ const QUEST_LOG_ENTRIES = [
   { name: 'ボスラッシュ', status: () => quest.bossRushCompleted ? '完了' : quest.trialHardRewardGiven ? '挑戦可能' : '未着手' },
   { name: 'ガロンとの模擬戦', status: () => quest.galonSparAcknowledged ? '完了' : quest.galonSparStarted ? '進行中' : '未着手' },
   { name: '幻の花(フローラ)', status: () => quest.flowerQuestCompleted ? '完了' : quest.flowerQuestStarted ? '進行中' : '未着手' },
-  { name: 'ケントの禁書', status: () => quest.kentForbiddenBookFound ? '発見済み' : '未発見' }
+  { name: 'ケントの禁書', status: () => quest.kentForbiddenBookFound ? '発見済み' : '未発見' },
+  { name: '学院新聞コレクション', status: () => quest.newspaperRewardGiven ? '完了' : quest.newspapersFound.length > 0 ? `${quest.newspapersFound.length}/${NEWSPAPER_SPOTS.length}` : '未着手' },
+  { name: '屋上/もう一人の魔法使い', status: () => quest.shadowSelfDefeated ? '討伐済み' : quest.achievementBonusGiven ? '挑戦可能' : '未発見' },
+  { name: '真のエンディング', status: () => quest.trueEndingSeen ? '鑑賞済み' : '未鑑賞' }
 ];
 const SHOP_ITEMS = [
   {
@@ -1015,8 +1080,9 @@ class Player {
 class Fairy {
   constructor(type, x, y, opts) {
     this.type = type; this.x = x; this.y = y;
-    this.isBoss = type === 'queen' || type === 'darkmage' || type === 'familiar' || type === 'astra';
-    if (type === 'astra') { this.w = 48; this.h = 48; this.hp = 450; this.maxHp = 450; this.speed = 70; this.contactDamage = 30; }
+    this.isBoss = type === 'queen' || type === 'darkmage' || type === 'familiar' || type === 'astra' || type === 'shadowself';
+    if (type === 'shadowself') { this.w = 30; this.h = 30; this.hp = 600; this.maxHp = 600; this.speed = 95; this.contactDamage = 32; }
+    else if (type === 'astra') { this.w = 48; this.h = 48; this.hp = 450; this.maxHp = 450; this.speed = 70; this.contactDamage = 30; }
     else if (type === 'darkmage') { this.w = 44; this.h = 44; this.hp = 380; this.maxHp = 380; this.speed = 60; this.contactDamage = 35; }
     else if (type === 'queen') { this.w = 40; this.h = 40; this.hp = 260; this.maxHp = 260; this.speed = 65; this.contactDamage = 25; }
     else if (type === 'familiar') { this.w = 36; this.h = 36; this.hp = 190; this.maxHp = 190; this.speed = 72; this.contactDamage = 22; }
@@ -1078,7 +1144,7 @@ class Fairy {
     if (this.isBoss) {
       this.attackT -= dt;
       if (this.attackT <= 0 && this.state === 'chase') {
-        this.attackT = this.type === 'darkmage' ? 2.0 : this.type === 'familiar' ? 2.3 : this.type === 'astra' ? 2.8 : 2.6;
+        this.attackT = this.type === 'darkmage' ? 2.0 : this.type === 'familiar' ? 2.3 : this.type === 'astra' ? 2.8 : this.type === 'shadowself' ? 1.7 : 2.6;
         this.pendingAttack = true;
       }
     }
@@ -1143,6 +1209,11 @@ function spawnBossAttack(f, player) {
       enemyProjectiles.push(new EnemyProjectile(f.cx, f.cy, { x: Math.cos(a), y: Math.sin(a) }, { speed: 190, r: 8, dmg: 16, color: '#cfa6ff' }));
     }
     playTone(660, 0.2, 'triangle');
+  } else if (f.type === 'shadowself') {
+    [{ x: dirx, y: diry }, { x: -diry, y: dirx }, { x: diry, y: -dirx }].forEach((d, i) => {
+      enemyProjectiles.push(new EnemyProjectile(f.cx, f.cy, d, { speed: 230, r: 7, dmg: 17, color: '#4a1a5a', homing: i === 0 }));
+    });
+    playTone(200, 0.2, 'sawtooth');
   }
 }
 
@@ -1212,6 +1283,13 @@ class Treasure {
   }
   update(dt) { this.t += dt; }
 }
+class Newspaper {
+  constructor(x, y, spotIndex) {
+    this.x = x; this.y = y; this.w = 16; this.h = 16; this.t = Math.random() * 10; this.collected = false;
+    this.spotIndex = spotIndex;
+  }
+  update(dt) { this.t += dt; }
+}
 class MisplacedBook {
   constructor(x, y) {
     this.x = x; this.y = y; this.w = 16; this.h = 16; this.t = Math.random() * 10; this.collected = false;
@@ -1248,7 +1326,9 @@ class Dialogue {
   }
   close() {
     if (this.onClose) this.onClose();
-    gameState = this.triggerClear ? 'clear' : 'playing';
+    // onClose can redirect to a different state (e.g. the true-ending dialogue jumps straight to
+    // 'credits'); only apply the default transition if it didn't already move on from 'dialogue'
+    if (gameState === 'dialogue') gameState = this.triggerClear ? 'clear' : 'playing';
     dialogue = null;
   }
 }
@@ -1291,6 +1371,9 @@ let leavesSpawned = false;
 let flowerRespawnTimer = 0;
 let forbiddenBookSpawned = false;
 let trialRunTimer = 0;
+let rooftopSpawned = false;
+let creditsScrollT = 0;
+let newspapersSpawned = false;
 let trialSpawnedThisRoom = false;
 let misplacedBooksSpawned = false;
 let darkStudySpawned = false;
@@ -1344,6 +1427,7 @@ const SCENE_BGM = {
   dungeon2: { notes: [130.8, 164.8, 196.0, 261.6], lfoSpeed: 0.25, type: 'square' },
   dungeon3: { notes: [110.0, 138.6, 164.8, 220.0], lfoSpeed: 0.22, type: 'sine' },
   observatory: { notes: [293.7, 370.0, 440.0, 554.4], lfoSpeed: 0.08, type: 'sine' },
+  rooftop: { notes: [329.6, 415.3, 493.9, 622.3], lfoSpeed: 0.1, type: 'sine' },
   boss: { notes: [98.0, 116.5, 146.8, 184.9], lfoSpeed: 0.45, type: 'sawtooth' }
 };
 function hasLiveBossInScene() {
@@ -1453,7 +1537,9 @@ function freshQuest() {
     galonSparStarted: false, galonSparCompleted: false, galonSparAcknowledged: false,
     flowerQuestStarted: false, flowerWaterCount: 0, flowerQuestCompleted: false,
     kentForbiddenBookFound: false,
-    trialBestTime: null
+    trialBestTime: null,
+    shadowSelfDefeated: false, trueEndingSeen: false,
+    newspapersFound: [], newspaperRewardGiven: false
   };
 }
 function makeSpawnedFairies(spawnDefs, defeatedArr) {
@@ -1490,9 +1576,12 @@ function rebuildWorld() {
   misplacedBooksSpawned = false;
   darkStudySpawned = false;
   observatorySpawned = false;
+  rooftopSpawned = false;
+  newspapersSpawned = false;
   SCENES.trial.map[0][10] = '#';
   SCENES.dungeon2.map[ROWS - 1][10] = '#';
   SCENES.classroom.map[0][10] = '#';
+  SCENES.observatory.map[0][10] = '#';
   projectiles = []; enemyProjectiles = []; particles = []; floatingTexts = []; dialogue = null; doorCooldown = 0.5;
   waveActive = false; waveNumber = 0; waveRestT = 0; waveBannerT = 0; waveBannerText = '';
   bossRushActive = false; bossRushIndex = 0; bossRushNoHit = true;
@@ -2021,6 +2110,20 @@ function update(dt) {
       }
       observatorySpawned = true;
     }
+    if (quest.achievementBonusGiven && !rooftopSpawned) {
+      SCENES.observatory.map[0][10] = 'D';
+      if (!quest.shadowSelfDefeated) {
+        worldEntities.rooftop.fairies.push(new Fairy('shadowself', toPx(10) + 6, toPx(8) + 6));
+      }
+      rooftopSpawned = true;
+    }
+    if (quest.started && !newspapersSpawned) {
+      NEWSPAPER_SPOTS.forEach((spot, i) => {
+        if (quest.newspapersFound.includes(i)) return;
+        worldEntities[spot.scene].items.push(new Newspaper(toPx(spot.x) + 6, toPx(spot.y) + 6, i));
+      });
+      newspapersSpawned = true;
+    }
     if (quest.bookQuestStarted && !booksSpawned) {
       const remaining = Math.max(0, 3 - quest.booksCollected);
       BOOK_SPOTS.slice(0, remaining).forEach(spot => {
@@ -2055,7 +2158,7 @@ function update(dt) {
       });
     }
     if (quest.minaHistoryCompleted && !forbiddenBookSpawned) {
-      worldEntities.library.items.push(new ForbiddenBook(toPx(17) + 6, toPx(9) + 6));
+      worldEntities.library.items.push(new ForbiddenBook(toPx(9) + 6, toPx(3) + 6));
       forbiddenBookSpawned = true;
     }
     if (quest.flowerQuestStarted && !quest.flowerQuestCompleted && currentSceneKey === 'greenhouse') {
@@ -2154,6 +2257,11 @@ function update(dt) {
                   if (!player.spells.includes('wind')) player.spells.push('wind');
                   addFloatingText(f.cx, f.y - 40, '「風」の魔法を会得した! 力+20 HP+40', '#b8ffb0');
                 }
+              } else if (f.type === 'shadowself' && !quest.shadowSelfDefeated) {
+                quest.shadowSelfDefeated = true;
+                gainXp(500);
+                player.power += 25; player.maxHp += 50; player.hp = player.maxHp;
+                addFloatingText(f.cx, f.y - 40, 'もう一人の自分に打ち勝った! 力+25 HP+50', '#e0c9ff');
               }
               if (bossRushActive) advanceBossRush();
             } else {
@@ -2230,6 +2338,17 @@ function update(dt) {
           player.power += 10; player.maxHp += 20; player.hp = player.maxHp;
           addFloatingText(player.cx, player.y - 30, '全ての秘宝を発見! 力+10 HP+20', '#ffe066');
         }
+      } else if (it instanceof Newspaper) {
+        if (!quest.newspapersFound.includes(it.spotIndex)) quest.newspapersFound.push(it.spotIndex);
+        const spot = NEWSPAPER_SPOTS[it.spotIndex];
+        dialogue = new Dialogue(spot.headline, [spot.lore], () => {});
+        gameState = 'dialogue';
+        playTone(680, 0.12, 'sine');
+        if (quest.newspapersFound.length >= NEWSPAPER_SPOTS.length && !quest.newspaperRewardGiven) {
+          quest.newspaperRewardGiven = true;
+          player.power += 5; player.maxHp += 10; player.hp = player.maxHp;
+          addFloatingText(player.cx, player.y - 30, '学院新聞 全号コンプリート! 力+5 HP+10', '#cbb8ff');
+        }
       } else if (it instanceof MisplacedBook) {
         quest.misplacedBooksReturned = Math.min(3, quest.misplacedBooksReturned + 1);
         addFloatingText(player.cx, player.y - 10, `迷い込んだ本+1 (${quest.misplacedBooksReturned}/3)`, '#c9a6ff');
@@ -2276,6 +2395,8 @@ function update(dt) {
     }
   } else if (gameState === 'dialogue') {
     dialogue.update(dt);
+  } else if (gameState === 'credits') {
+    creditsScrollT += dt;
   }
 }
 
@@ -2311,6 +2432,7 @@ function drawFloor(px, py, tx, ty) {
   else if (currentSceneKey === 'greenhouse') { c1 = '#dff0d8'; c2 = '#d0e8cc'; }
   else if (currentSceneKey === 'trial') { c1 = '#6b5a3a'; c2 = '#5f4f32'; }
   else if (currentSceneKey === 'observatory') { c1 = '#141230'; c2 = '#10102a'; }
+  else if (currentSceneKey === 'rooftop') { c1 = '#8a95b8'; c2 = '#7e89ac'; }
   ctx.fillStyle = dark ? c1 : c2;
   ctx.fillRect(px, py, TILE, TILE);
   if (currentSceneKey === 'courtyard' && (tx * 31 + ty * 17) % 7 === 0) {
@@ -2656,6 +2778,10 @@ function drawFairyProcedural(f, isBoss) {
       const a = f.animT * 1.2 + (Math.PI / 2) * i;
       drawStarSpark(cx + Math.cos(a) * orbitR, cy + Math.sin(a) * orbitR * 0.6, 4, 'rgba(207,166,255,0.85)');
     }
+  } else if (isBoss && f.type === 'shadowself') {
+    ctx.strokeStyle = `rgba(160,110,220,${0.4 + Math.sin(f.animT * 6) * 0.2})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx, cy, f.w / 1.5, 0, Math.PI * 2); ctx.stroke();
   }
   const eyeGap = isBoss ? 6 : 4, eyeR = isBoss ? 2.6 : 1.9;
   [cx - eyeGap, cx + eyeGap].forEach(ex => {
@@ -2879,6 +3005,7 @@ function drawScene() {
       : it instanceof Leaf ? () => drawLeaf(it)
       : it instanceof WaterFlower ? () => drawWaterFlower(it)
       : it instanceof Treasure ? () => drawTreasure(it)
+      : it instanceof Newspaper ? () => drawBook(it)
       : it instanceof Shard ? () => drawShard(it)
       : () => drawCrystal(it);
     drawables.push({ y: it.y + it.h, fn });
@@ -3135,6 +3262,32 @@ function drawLoadingScreen() {
   ctx.fillRect(bx, by, bw * (assetsLoadedCount / ASSET_KEYS.length), 10);
   ctx.textAlign = 'left';
 }
+const CREDITS_LINES = [
+  { text: '魔法学院', size: 'bold 30px serif', color: '#f2d34a', gap: 60 },
+  { text: '〜見習い魔法使いの一日〜', size: '15px sans-serif', color: '#cbb8ff', gap: 60 },
+  { text: 'ご協力いただいた皆様', size: 'bold 16px sans-serif', color: '#fff', gap: 36 },
+  { text: 'ローズ先生 / アリサ / ミナ先輩 / ケント', size: '13px sans-serif', color: '#cbb8ff', gap: 24 },
+  { text: '重装騎士ガロン / フローラ先輩 / 森の番人ノア', size: '13px sans-serif', color: '#cbb8ff', gap: 24 },
+  { text: '修行僧レン / 行商人ミオ', size: '13px sans-serif', color: '#cbb8ff', gap: 48 },
+  { text: 'あなたが成し遂げたこと', size: 'bold 16px sans-serif', color: '#fff', gap: 36 },
+  { text: () => `実績 ${quest.unlockedAchievements.length} / ${ACHIEVEMENTS.length}　図鑑 ${quest.bestiaryDefeated.length} / ${BESTIARY_TYPES.length}`, size: '13px sans-serif', color: '#7fe0c9', gap: 24 },
+  { text: () => `秘宝 ${quest.treasuresFound.length} / ${TREASURE_SPOTS.length}　学院新聞 ${quest.newspapersFound.length} / ${NEWSPAPER_SPOTS.length}`, size: '13px sans-serif', color: '#7fe0c9', gap: 24 },
+  { text: () => `総討伐数 ${totalKills}　称号「${playerTitle(quest)}」`, size: '13px sans-serif', color: '#7fe0c9', gap: 60 },
+  { text: 'Thank you for playing.', size: 'bold 18px serif', color: '#f2d34a', gap: 40 },
+  { text: 'Enter / Space で学院に戻る', size: '12px sans-serif', color: 'rgba(255,255,255,0.5)', gap: 0 }
+];
+function drawCredits() {
+  ctx.fillStyle = '#0a0818'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.textAlign = 'center';
+  let y = HEIGHT - creditsScrollT * 30;
+  CREDITS_LINES.forEach(line => {
+    const text = typeof line.text === 'function' ? line.text() : line.text;
+    ctx.font = line.size; ctx.fillStyle = line.color;
+    if (y > -20 && y < HEIGHT + 20) ctx.fillText(text, WIDTH / 2, y);
+    y += line.gap;
+  });
+  ctx.textAlign = 'left';
+}
 function drawWaveBanner() {
   const a = Math.min(1, waveBannerT / 0.4);
   ctx.globalAlpha = a;
@@ -3173,7 +3326,8 @@ const MAP_LAYOUT = {
   dungeon1: { x: 0, y: 1 },
   dungeon2: { x: 0, y: 2 },
   dungeon3: { x: 0, y: 3 },
-  observatory: { x: 0, y: -2 }
+  observatory: { x: 0, y: -2 },
+  rooftop: { x: 0, y: -3 }
 };
 function drawPanelBackdrop(title) {
   ctx.fillStyle = 'rgba(0,0,0,0.72)';
@@ -3283,21 +3437,47 @@ function drawTitleListPanel() {
   ctx.fillText(`現在の称号: ${playerTitle(quest)}`, WIDTH / 2, startY + TITLE_TIERS.length * rowH + 16);
   ctx.textAlign = 'left';
 }
+function drawAlbumPanel() {
+  drawPanelBackdrop('学院新聞アルバム (N)');
+  const startY = 84, rowH = 90;
+  ctx.font = 'bold 14px sans-serif';
+  NEWSPAPER_SPOTS.forEach((spot, i) => {
+    const found = quest.newspapersFound.includes(i);
+    const y = startY + i * rowH;
+    ctx.fillStyle = found ? 'rgba(203,184,255,0.1)' : 'rgba(255,255,255,0.03)';
+    ctx.fillRect(100, y, WIDTH - 200, rowH - 10);
+    ctx.fillStyle = found ? '#cbb8ff' : '#555';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(found ? spot.headline : '???', 112, y + 22);
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = found ? '#fff' : '#444';
+    wrapText(found ? spot.lore : '未発見の新聞記事', 112, y + 44, WIDTH - 224, 18);
+  });
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#cbb8ff'; ctx.font = '13px sans-serif';
+  ctx.fillText(`収集数: ${quest.newspapersFound.length} / ${NEWSPAPER_SPOTS.length}`, WIDTH / 2, startY + NEWSPAPER_SPOTS.length * rowH + 10);
+  ctx.textAlign = 'left';
+}
 function drawQuestLogPanel() {
   drawPanelBackdrop('クエストログ (Q)');
-  const startY = 76, rowH = 27;
-  ctx.font = '12px sans-serif';
+  const startY = 72, rowH = 24;
+  const colW = (WIDTH - 80) / 2, col0X = 40, col1X = 40 + colW;
+  const perCol = Math.ceil(QUEST_LOG_ENTRIES.length / 2);
+  ctx.font = '11px sans-serif';
   QUEST_LOG_ENTRIES.forEach((q, i) => {
     const st = q.status();
-    const y = startY + i * rowH;
-    const color = st === '完了' ? '#7fe0c9' : st === '進行中' ? '#f2d34a' : '#666';
-    ctx.fillStyle = st === '完了' ? 'rgba(127,224,201,0.08)' : st === '進行中' ? 'rgba(242,211,74,0.08)' : 'rgba(255,255,255,0.03)';
-    ctx.fillRect(120, y, WIDTH - 240, rowH - 8);
+    const col = Math.floor(i / perCol);
+    const row = i % perCol;
+    const x = col === 0 ? col0X : col1X;
+    const y = startY + row * rowH;
+    const color = st === '完了' || st === '発見済み' || st === '鑑賞済み' || st === '討伐済み' ? '#7fe0c9' : st === '進行中' || st === '挑戦可能' ? '#f2d34a' : '#666';
+    ctx.fillStyle = st === '完了' ? 'rgba(127,224,201,0.08)' : 'rgba(255,255,255,0.03)';
+    ctx.fillRect(x, y, colW - 20, rowH - 6);
     ctx.fillStyle = '#fff';
-    ctx.fillText(q.name, 132, y + 18);
+    ctx.fillText(q.name, x + 8, y + 15);
     ctx.textAlign = 'right';
     ctx.fillStyle = color;
-    ctx.fillText(st, WIDTH - 132, y + 18);
+    ctx.fillText(st, x + colW - 28, y + 15);
     ctx.textAlign = 'left';
   });
 }
@@ -3327,7 +3507,8 @@ function drawInventoryPanel() {
     `ミナの学院史: ${quest.minaHistoryCompleted ? '完了' : quest.minaHistoryStarted ? `証言 ${quest.testimonies.length}/3` : '未着手'}`,
     `ボスラッシュ: ${quest.bossRushCompleted ? (quest.bossRushNoHit ? '制覇(無傷)' : '制覇') : '未挑戦'}`,
     `修行の回廊 最速クリア: ${quest.trialBestTime !== null ? quest.trialBestTime.toFixed(1) + '秒' : '記録なし'}`,
-    `模擬戦(ガロン): ${quest.galonSparCompleted ? '勝利' : quest.galonSparStarted ? '進行中' : '未挑戦'}　幻の花: ${quest.flowerQuestCompleted ? '開花' : quest.flowerQuestStarted ? `${quest.flowerWaterCount}/3` : '未着手'}`
+    `模擬戦(ガロン): ${quest.galonSparCompleted ? '勝利' : quest.galonSparStarted ? '進行中' : '未挑戦'}　幻の花: ${quest.flowerQuestCompleted ? '開花' : quest.flowerQuestStarted ? `${quest.flowerWaterCount}/3` : '未着手'}`,
+    `学院新聞: ${quest.newspapersFound.length} / ${NEWSPAPER_SPOTS.length}　屋上: ${quest.shadowSelfDefeated ? '制覇' : quest.achievementBonusGiven ? '挑戦可能' : '未発見'}　真のエンド: ${quest.trueEndingSeen ? '鑑賞済み' : '未鑑賞'}`
   ];
   ctx.font = '13px sans-serif';
   ctx.fillStyle = '#fff';
@@ -3375,6 +3556,7 @@ function drawUIPanel() {
   else if (uiPanel === 'shop') drawShopPanel();
   else if (uiPanel === 'questlog') drawQuestLogPanel();
   else if (uiPanel === 'titles') drawTitleListPanel();
+  else if (uiPanel === 'album') drawAlbumPanel();
 }
 function drawOverlay(title, sub, tint) {
   ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -3392,6 +3574,7 @@ function render() {
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
   if (gameState === 'loading') { drawLoadingScreen(); return; }
   if (gameState === 'title') { drawTitle(); return; }
+  if (gameState === 'credits') { drawCredits(); return; }
   ctx.save();
   if (shakeT > 0) ctx.translate((Math.random() - 0.5) * shakeMag, (Math.random() - 0.5) * shakeMag);
   drawScene();
@@ -3413,7 +3596,7 @@ function onKeyDown(e) {
   if (uiPanel === 'shop') {
     if (code === 'Digit1' || code === 'Digit2' || code === 'Digit3' || code === 'Digit4' || code === 'Digit5' || code === 'Digit6') { tryShopPurchase(code.slice(-1)); return; }
     if (code === 'Escape' || code === 'KeyF') { uiPanel = null; return; }
-    if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB' || code === 'KeyQ' || code === 'KeyT') return;
+    if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB' || code === 'KeyQ' || code === 'KeyT' || code === 'KeyN') return;
   }
   if (code === 'Digit1') { switchSpell('arcane'); return; }
   if (code === 'Digit2') { switchSpell('fire'); return; }
@@ -3429,9 +3612,9 @@ function onKeyDown(e) {
     return;
   }
   if (code === 'KeyX') { if (gameState === 'playing' && !uiPanel && !e.repeat) { ensureAudio(); startCharge(); } return; }
-  if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB' || code === 'KeyQ' || code === 'KeyT') {
+  if (code === 'KeyI' || code === 'KeyM' || code === 'KeyC' || code === 'KeyB' || code === 'KeyQ' || code === 'KeyT' || code === 'KeyN') {
     if (e.repeat) return;
-    const want = code === 'KeyI' ? 'inventory' : code === 'KeyM' ? 'map' : code === 'KeyC' ? 'achievements' : code === 'KeyB' ? 'bestiary' : code === 'KeyQ' ? 'questlog' : 'titles';
+    const want = code === 'KeyI' ? 'inventory' : code === 'KeyM' ? 'map' : code === 'KeyC' ? 'achievements' : code === 'KeyB' ? 'bestiary' : code === 'KeyQ' ? 'questlog' : code === 'KeyT' ? 'titles' : 'album';
     if (gameState === 'playing') { uiPanel = uiPanel === want ? null : want; }
     return;
   }
@@ -3455,6 +3638,7 @@ function onKeyDown(e) {
   }
   if (gameState === 'gameover') { respawnAfterDeath(); return; }
   if (gameState === 'clear') { gameState = 'playing'; saveGame(); return; }
+  if (gameState === 'credits') { gameState = 'playing'; saveGame(); return; }
   if (gameState === 'dialogue') { dialogue.advance(); return; }
   if (gameState === 'playing') {
     tryInteract();
