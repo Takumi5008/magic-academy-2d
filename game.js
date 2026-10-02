@@ -585,6 +585,31 @@ function galonLines(quest) {
       complete: () => { quest.testimonies.push('galon'); }
     };
   }
+  if (quest.minaHistoryCompleted && !quest.galonSparStarted) {
+    return {
+      lines: [
+        'ほう、ミナ嬢の歴史書、もう手伝ったのか。仕事が早いな。',
+        'せっかくだ、儂と模擬戦をしてみるか? もちろん本気は出さんが、少しは骨があるところを見せてみろ。',
+        '準備はいいか? 話し終えると同時に始めるぞ!'
+      ],
+      complete: () => { quest.galonSparStarted = true; startGalonSpar(); }
+    };
+  }
+  if (quest.galonSparStarted && !quest.galonSparCompleted) {
+    return { lines: ['まだ模擬戦の相手が残っているはずだ。', '手加減はせんぞ。'], complete: () => {} };
+  }
+  if (quest.galonSparCompleted && !quest.galonSparAcknowledged) {
+    return {
+      lines: [
+        'やるな……本当に見習いか? 儂も歳には勝てんが、まだまだ現役のつもりだったのだがな。',
+        'これを持っていくといい。若い頃に使っていた小手だ。(魔法威力 +8 / 最大HP +15)'
+      ],
+      complete: () => {
+        quest.galonSparAcknowledged = true;
+        player.power += 8; player.maxHp += 15; player.hp = player.maxHp;
+      }
+    };
+  }
   return {
     lines: pickFlavor([
       ['お前はもう、この学院の誇りだな。', '封印も安定した。もう妖精たちが暴れることもないだろう。'],
@@ -636,6 +661,32 @@ function floraLines(quest) {
       ],
       complete: () => { quest.testimonies.push('flora'); }
     };
+  }
+  if (quest.minaHistoryCompleted && !quest.flowerQuestStarted) {
+    return {
+      lines: [
+        'ねえ、実は「幻の花」って呼ばれる特別な花の種を持ってるの。',
+        'とても水を欲しがる子でね、3回ちゃんと水をあげないと咲かないの。',
+        '温室の真ん中に植えておくから、時々見に来て水をあげてくれない?'
+      ],
+      complete: () => { quest.flowerQuestStarted = true; }
+    };
+  }
+  if (quest.flowerQuestStarted && !quest.flowerQuestCompleted) {
+    if (quest.flowerWaterCount >= 3) {
+      return {
+        lines: [
+          '見て、咲いたわ! こんなに綺麗な花、初めて見た!',
+          'あなたが水をあげてくれたからよ。ありがとう。これ、お礼にどうぞ。(最大HP +25 / ポーション上限 +1)'
+        ],
+        complete: () => {
+          quest.flowerQuestCompleted = true;
+          player.maxHp += 25; player.hp = player.maxHp;
+          player.maxPotions += 1;
+        }
+      };
+    }
+    return { lines: [`幻の花、まだ ${quest.flowerWaterCount}/3 回しか水をあげてないわ。`, '温室の真ん中を見てみて。'], complete: () => {} };
   }
   return {
     lines: pickFlavor([
@@ -815,6 +866,8 @@ const BOOK_SPOTS = [
   { x: 10, y: 12, lore: '『妖精たちの異変は、地の底で目覚めた何かと無関係ではないだろう』' }
 ];
 const LEAF_SPOTS = [{ x: 6, y: 4 }, { x: 13, y: 4 }, { x: 6, y: 10 }, { x: 13, y: 10 }];
+const FLOWER_SPOT = { x: 10, y: 9 };
+const FLOWER_RESPAWN_TIME = 25;
 const MISPLACED_BOOK_SPOTS = [
   { scene: 'courtyard', x: 13, y: 9 },
   { scene: 'forest', x: 7, y: 7 },
@@ -849,7 +902,10 @@ const QUEST_LOG_ENTRIES = [
   { name: '天文台/星の番人', status: () => quest.astraDefeated ? '完了' : quest.treasureRewardGiven ? '進行中' : '未着手' },
   { name: 'ノアのウェーブ討伐', status: () => quest.noahQuestCompleted ? '完了' : quest.waveMilestone10 ? '進行中' : '未着手' },
   { name: 'ミナの学院史', status: () => quest.minaHistoryCompleted ? '完了' : quest.minaHistoryStarted ? '進行中' : '未着手' },
-  { name: 'ボスラッシュ', status: () => quest.bossRushCompleted ? '完了' : quest.trialHardRewardGiven ? '挑戦可能' : '未着手' }
+  { name: 'ボスラッシュ', status: () => quest.bossRushCompleted ? '完了' : quest.trialHardRewardGiven ? '挑戦可能' : '未着手' },
+  { name: 'ガロンとの模擬戦', status: () => quest.galonSparAcknowledged ? '完了' : quest.galonSparStarted ? '進行中' : '未着手' },
+  { name: '幻の花(フローラ)', status: () => quest.flowerQuestCompleted ? '完了' : quest.flowerQuestStarted ? '進行中' : '未着手' },
+  { name: 'ケントの禁書', status: () => quest.kentForbiddenBookFound ? '発見済み' : '未発見' }
 ];
 const SHOP_ITEMS = [
   {
@@ -1125,6 +1181,12 @@ class Book {
   }
   update(dt) { this.t += dt; }
 }
+class ForbiddenBook {
+  constructor(x, y) {
+    this.x = x; this.y = y; this.w = 16; this.h = 16; this.t = Math.random() * 10; this.collected = false;
+  }
+  update(dt) { this.t += dt; }
+}
 class Potion {
   constructor(x, y) {
     this.x = x; this.y = y; this.w = 16; this.h = 16; this.t = Math.random() * 10; this.collected = false;
@@ -1132,6 +1194,12 @@ class Potion {
   update(dt) { this.t += dt; }
 }
 class Leaf {
+  constructor(x, y) {
+    this.x = x; this.y = y; this.w = 16; this.h = 16; this.t = Math.random() * 10; this.collected = false;
+  }
+  update(dt) { this.t += dt; }
+}
+class WaterFlower {
   constructor(x, y) {
     this.x = x; this.y = y; this.w = 16; this.h = 16; this.t = Math.random() * 10; this.collected = false;
   }
@@ -1220,6 +1288,9 @@ let bestWave = 0;
 let dungeonSpawned = false;
 let booksSpawned = false;
 let leavesSpawned = false;
+let flowerRespawnTimer = 0;
+let forbiddenBookSpawned = false;
+let trialRunTimer = 0;
 let trialSpawnedThisRoom = false;
 let misplacedBooksSpawned = false;
 let darkStudySpawned = false;
@@ -1378,7 +1449,11 @@ function freshQuest() {
     alisaTalkCount: 0, alisaAffinityGiven: [], alisaCongratsGiven: false,
     minaHistoryStarted: false, testimonies: [], minaHistoryCompleted: false,
     bossRushCompleted: false, bossRushNoHit: false,
-    shopStardustPotionLevel: 0, meteorTreasureBought: false
+    shopStardustPotionLevel: 0, meteorTreasureBought: false,
+    galonSparStarted: false, galonSparCompleted: false, galonSparAcknowledged: false,
+    flowerQuestStarted: false, flowerWaterCount: 0, flowerQuestCompleted: false,
+    kentForbiddenBookFound: false,
+    trialBestTime: null
   };
 }
 function makeSpawnedFairies(spawnDefs, defeatedArr) {
@@ -1409,6 +1484,8 @@ function rebuildWorld() {
   booksSpawned = false;
   leavesSpawned = false;
   leafSpotTimer = [0, 0, 0, 0];
+  flowerRespawnTimer = 0;
+  forbiddenBookSpawned = false;
   trialSpawnedThisRoom = false;
   misplacedBooksSpawned = false;
   darkStudySpawned = false;
@@ -1739,12 +1816,23 @@ function spawnTrialStage(stage) {
 }
 function startTrialCorridor() {
   quest.trialStage = 1;
+  trialRunTimer = 0;
   worldEntities.trial.fairies = [];
   trialSpawnedThisRoom = false;
   currentSceneKey = 'trial';
   player.x = toPx(10) + (TILE - player.w) / 2;
   player.y = toPx(ROWS - 2) + (TILE - player.h) / 2;
   saveGame();
+}
+function startGalonSpar() {
+  const f = new Fairy('shadow', toPx(10) + 6, toPx(6) + 6, { noElite: true });
+  f.hp = Math.round(f.hp * 1.6); f.maxHp = f.hp;
+  f.contactDamage = Math.round(f.contactDamage * 1.3);
+  f.isGalonSpar = true;
+  worldEntities.dungeon1.fairies.push(f);
+  waveBannerText = 'ガロンとの模擬戦!';
+  waveBannerT = 1.8;
+  playTone(440, 0.18, 'square');
 }
 function continueTrialHardMode() {
   quest.trialHardUnlocked = true;
@@ -1768,6 +1856,10 @@ function advanceTrialStage() {
       player.power += 25; player.maxHp += 50; player.hp = player.maxHp;
       addFloatingText(player.cx, player.y - 24, '全ステージ制覇! 力+25 HP+50', '#ffe066');
       shake(6, 0.3);
+      if (quest.trialBestTime === null || trialRunTimer < quest.trialBestTime) {
+        quest.trialBestTime = trialRunTimer;
+        addFloatingText(player.cx, player.y - 44, `クリアタイム: ${trialRunTimer.toFixed(1)}秒`, '#7fe0c9');
+      }
     } else if (ceiling === TRIAL_STAGE_HARD_MAX && !quest.trialHardRewardGiven) {
       quest.trialHardRewardGiven = true;
       player.power += 30; player.maxHp += 60; player.hp = player.maxHp;
@@ -1857,6 +1949,7 @@ function update(dt) {
       }
     }
 
+    if (quest.trialStage >= 1 && quest.trialStage <= TRIAL_STAGE_MAX && !quest.trialsRewardGiven) trialRunTimer += dt;
     const trialCeiling = quest.trialHardUnlocked ? TRIAL_STAGE_HARD_MAX : TRIAL_STAGE_MAX;
     if (currentSceneKey === 'trial' && quest.trialStage >= 1 && quest.trialStage <= trialCeiling) {
       const doorOpen = SCENES.trial.map[0][10] === 'D';
@@ -1961,6 +2054,21 @@ function update(dt) {
         }
       });
     }
+    if (quest.minaHistoryCompleted && !forbiddenBookSpawned) {
+      worldEntities.library.items.push(new ForbiddenBook(toPx(17) + 6, toPx(9) + 6));
+      forbiddenBookSpawned = true;
+    }
+    if (quest.flowerQuestStarted && !quest.flowerQuestCompleted && currentSceneKey === 'greenhouse') {
+      const fpx = toPx(FLOWER_SPOT.x) + 6, fpy = toPx(FLOWER_SPOT.y) + 6;
+      const flowerPresent = worldEntities.greenhouse.items.some(it => it instanceof WaterFlower && Math.abs(it.x - fpx) < 4 && Math.abs(it.y - fpy) < 4);
+      if (!flowerPresent) {
+        flowerRespawnTimer -= dt;
+        if (flowerRespawnTimer <= 0) {
+          worldEntities.greenhouse.items.push(new WaterFlower(fpx, fpy));
+          flowerRespawnTimer = FLOWER_RESPAWN_TIME;
+        }
+      }
+    }
 
     const liveEnts = worldEntities[currentSceneKey];
     liveEnts.fairies.forEach(f => {
@@ -2050,6 +2158,12 @@ function update(dt) {
               if (bossRushActive) advanceBossRush();
             } else {
               gainXp(15 + (waveActive ? waveNumber * 3 : 0));
+              if (f.isGalonSpar) {
+                quest.galonSparCompleted = true;
+                addFloatingText(f.cx, f.y - 24, '模擬戦、勝利!', '#ffe066');
+                playTone(880, 0.25, 'triangle');
+                shake(4, 0.2);
+              }
               const dropX = f.x + (f.w - 16) / 2, dropY = f.y + (f.h - 16) / 2;
               if (!waveActive) {
                 if (currentSceneKey === 'courtyard') {
@@ -2092,6 +2206,17 @@ function update(dt) {
         playTone(720, 0.14, 'sine');
         dialogue = new Dialogue('古い魔法書', [it.lore || '……古びたページには、判読できない文字が並んでいる。'], () => {});
         gameState = 'dialogue';
+      } else if (it instanceof ForbiddenBook) {
+        quest.kentForbiddenBookFound = true;
+        player.power += 10; player.maxHp += 10; player.hp = player.maxHp;
+        playTone(760, 0.16, 'sine'); playTone(1020, 0.14, 'sine');
+        dialogue = new Dialogue('禁書', [
+          '本棚の隙間に隠されていた、一冊の禁書……。',
+          '「……力を求める者は、いつか力に飲まれる。レインよ、どうか目を覚ましてくれ」と書かれている。',
+          'ページの最後には、見覚えのある教師のサインが。ローズ先生のものだ。',
+          '読み終えると、不思議な力が身体に流れ込んでくるのを感じた。(魔法威力 +10 / 最大HP +10)'
+        ], () => {});
+        gameState = 'dialogue';
       } else if (it instanceof Leaf) {
         quest.leavesCollected = Math.min(4, quest.leavesCollected + 1);
         addFloatingText(player.cx, player.y - 10, `癒しの葉+1 (${quest.leavesCollected}/4)`, '#9fe0a0');
@@ -2113,6 +2238,10 @@ function update(dt) {
         fairyShards += it.value;
         addFloatingText(player.cx, player.y - 10, `妖精のかけら+${it.value}`, '#7fe0c9');
         playTone(820, 0.1, 'sine');
+      } else if (it instanceof WaterFlower) {
+        quest.flowerWaterCount = Math.min(3, quest.flowerWaterCount + 1);
+        addFloatingText(player.cx, player.y - 10, `幻の花に水をあげた (${quest.flowerWaterCount}/3)`, '#9fe0a0');
+        playTone(700, 0.12, 'sine');
       } else if (it instanceof Gear) {
         if (it.kind === 'power') {
           player.power += 3;
@@ -2653,6 +2782,21 @@ function drawLeaf(it) {
   ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(0, 6); ctx.stroke();
   ctx.restore();
 }
+function drawWaterFlower(it) {
+  const cx = it.x + it.w / 2, cy = it.y + it.h / 2 + Math.sin(it.t * 2) * 2;
+  ctx.save(); ctx.translate(cx, cy);
+  ctx.strokeStyle = '#3a7a3a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(0, 0); ctx.stroke();
+  const petalColors = ['#ff9fd6', '#ffb0e0', '#ffc4ea', '#ff9fd6', '#ffb0e0'];
+  for (let i = 0; i < 5; i++) {
+    const a = (Math.PI * 2 / 5) * i + it.t * 0.4;
+    ctx.fillStyle = petalColors[i];
+    ctx.beginPath(); ctx.ellipse(Math.cos(a) * 5, -8 + Math.sin(a) * 5, 4, 3, a, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = '#ffe066';
+  ctx.beginPath(); ctx.arc(0, -8, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
 function drawTreasure(it) {
   const cx = it.x + it.w / 2, cy = it.y + it.h / 2 + Math.sin(it.t * 3) * 3;
   const glowR = 14 + Math.sin(it.t * 4) * 3;
@@ -2730,9 +2874,10 @@ function drawScene() {
   ents.fairies.forEach(f => { if (!f.dead) drawables.push({ y: f.y + f.h, fn: () => drawFairy(f) }); });
   ents.items.forEach(it => {
     const fn = it instanceof Gear ? () => drawGear(it)
-      : it instanceof Book || it instanceof MisplacedBook ? () => drawBook(it)
+      : it instanceof Book || it instanceof MisplacedBook || it instanceof ForbiddenBook ? () => drawBook(it)
       : it instanceof Potion ? () => drawPotion(it)
       : it instanceof Leaf ? () => drawLeaf(it)
+      : it instanceof WaterFlower ? () => drawWaterFlower(it)
       : it instanceof Treasure ? () => drawTreasure(it)
       : it instanceof Shard ? () => drawShard(it)
       : () => drawCrystal(it);
@@ -3140,8 +3285,8 @@ function drawTitleListPanel() {
 }
 function drawQuestLogPanel() {
   drawPanelBackdrop('クエストログ (Q)');
-  const startY = 84, rowH = 34;
-  ctx.font = '13px sans-serif';
+  const startY = 76, rowH = 27;
+  ctx.font = '12px sans-serif';
   QUEST_LOG_ENTRIES.forEach((q, i) => {
     const st = q.status();
     const y = startY + i * rowH;
@@ -3180,11 +3325,13 @@ function drawInventoryPanel() {
     `実績: ${quest.unlockedAchievements.length} / ${ACHIEVEMENTS.length}`,
     `アリサとの友情: ${quest.alisaAffinityGiven.length} / ${ALISA_AFFINITY_TIERS.length}`,
     `ミナの学院史: ${quest.minaHistoryCompleted ? '完了' : quest.minaHistoryStarted ? `証言 ${quest.testimonies.length}/3` : '未着手'}`,
-    `ボスラッシュ: ${quest.bossRushCompleted ? (quest.bossRushNoHit ? '制覇(無傷)' : '制覇') : '未挑戦'}`
+    `ボスラッシュ: ${quest.bossRushCompleted ? (quest.bossRushNoHit ? '制覇(無傷)' : '制覇') : '未挑戦'}`,
+    `修行の回廊 最速クリア: ${quest.trialBestTime !== null ? quest.trialBestTime.toFixed(1) + '秒' : '記録なし'}`,
+    `模擬戦(ガロン): ${quest.galonSparCompleted ? '勝利' : quest.galonSparStarted ? '進行中' : '未挑戦'}　幻の花: ${quest.flowerQuestCompleted ? '開花' : quest.flowerQuestStarted ? `${quest.flowerWaterCount}/3` : '未着手'}`
   ];
-  ctx.font = '15px sans-serif';
+  ctx.font = '13px sans-serif';
   ctx.fillStyle = '#fff';
-  const startY = 92, rowH = 22;
+  const startY = 86, rowH = 20;
   lines.forEach((line, i) => { if (line) ctx.fillText(line, 130, startY + i * rowH); });
 }
 function drawMapPanel() {
