@@ -576,13 +576,25 @@ function noahLines(quest) {
       complete: () => { quest.testimonies.push('noah'); }
     };
   }
+  // Shown once, on its own, the moment the boss rush becomes available -- it must NOT also start
+  // a normal wave run on close, since finishing any dialogue requires pressing Enter through to
+  // the end, and that used to immediately call startWaveRun() right after telling the player to
+  // press R instead, starting "第1波" out from under them before they could ever press R.
+  if (quest.trialHardRewardGiven && !quest.bossRushCompleted && !quest.bossRushHintShown) {
+    return {
+      lines: [
+        'よく来たな、見習い魔法使いくん。',
+        '……お前ならもう「ボスラッシュ」にも挑めるはずだ。俺の近くでRキーを押してみろ。',
+        '歴代のボスたちと連戦することになる。生半可な覚悟では務まらんぞ。',
+        '普段通りの訓練がしたい時は、またいつでも話しかけてくれ。'
+      ],
+      complete: () => { quest.bossRushHintShown = true; }
+    };
+  }
   const recordLine = bestWave > 0 ? `これまでの最高記録は第${bestWave}波だ。` : 'まだ記録はないな。';
   const dungeonLine = quest.dungeonBossDefeated ? '闇の魔導士を倒したそうだな。大したものだ。' : null;
-  const bossRushLine = quest.trialHardRewardGiven && !quest.bossRushCompleted
-    ? '……お前ならもう「ボスラッシュ」にも挑めるはずだ。俺の近くでRキーを押してみろ。'
-    : null;
   return {
-    lines: [dungeonLine, 'よく来たな、見習い魔法使いくん。', '妖精たちが次々と襲ってくる訓練を受けさせてやろう。', recordLine, bossRushLine, '準備はいいか? 話し終えると同時に始まるぞ!'].filter(Boolean),
+    lines: [dungeonLine, 'よく来たな、見習い魔法使いくん。', '妖精たちが次々と襲ってくる訓練を受けさせてやろう。', recordLine, '準備はいいか? 話し終えると同時に始まるぞ!'].filter(Boolean),
     complete: () => { startWaveRun(); }
   };
 }
@@ -1628,7 +1640,7 @@ function freshQuest() {
     heroProofBought: false,
     alisaTalkCount: 0, alisaAffinityGiven: [], alisaCongratsGiven: false,
     minaHistoryStarted: false, testimonies: [], minaHistoryCompleted: false,
-    bossRushCompleted: false, bossRushNoHit: false,
+    bossRushCompleted: false, bossRushNoHit: false, bossRushHintShown: false,
     shopStardustPotionLevel: 0, meteorTreasureBought: false,
     galonSparStarted: false, galonSparCompleted: false, galonSparAcknowledged: false,
     flowerQuestStarted: false, flowerWaterCount: 0, flowerQuestCompleted: false,
