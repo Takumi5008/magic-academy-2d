@@ -57,6 +57,43 @@ function playerTitle(q) {
   if (q.started) return '見習い魔法使い';
   return '新入生';
 }
+function getNextObjective() {
+  const q = quest;
+  const steps = [
+    { done: () => q.started, title: '教室でローズ先生に話しかけよう', sub: () => '' },
+    { done: () => q.crystals >= q.required, title: '中庭で魔法結晶を集めよう', sub: () => `結晶 ${q.crystals} / ${q.required}` },
+    { done: () => q.completed, title: '先生に結晶を報告しよう', sub: () => '' },
+    { done: () => q.queenQuestStarted, title: '図書室のミナ先輩に会いに行こう', sub: () => '' },
+    { done: () => q.queenDefeated, title: '中庭の「妖精の女王」を倒そう', sub: () => '' },
+    { done: () => q.queenQuestCompleted, title: 'ミナに女王討伐を報告しよう', sub: () => '' },
+    { done: () => q.bookQuestCompleted, title: 'ケントの古い魔法書探しを手伝おう(図書室)', sub: () => q.bookQuestStarted ? `魔法書 ${q.booksCollected} / 3` : '' },
+    { done: () => q.hunterQuestCompleted, title: 'アリサの「妖精ハンター」に挑戦しよう', sub: () => q.hunterQuestStarted ? `討伐 ${fairiesDefeated} / ${SCENES.courtyard.enemySpawns.length}` : '' },
+    { done: () => q.dungeonUnlocked, title: 'ガロンに会いに行こう(地下迷宮入口)', sub: () => '' },
+    { done: () => q.dungeonBossDefeated, title: '地下迷宮で「闇の魔導士」を倒そう', sub: () => '' },
+    { done: () => q.dungeonRewardGiven, title: 'ガロンに討伐を報告しよう', sub: () => '' },
+    { done: () => q.leafQuestCompleted, title: '温室のフローラ先輩を訪ねよう', sub: () => q.leafQuestStarted ? `癒しの葉 ${q.leavesCollected} / 4` : '' },
+    { done: () => q.kentBookQuestCompleted, title: 'ケントの「迷い込んだ本」探しを手伝おう', sub: () => q.kentBookQuestStarted ? `本 ${q.misplacedBooksReturned} / 3` : '' },
+    { done: () => q.familiarDefeated, title: '地下迷宮の最奥、レインの書斎を探索しよう', sub: () => '' },
+    { done: () => q.treasureRewardGiven, title: '学院に隠された秘宝を探そう', sub: () => `秘宝 ${q.treasuresFound.length} / ${TREASURE_SPOTS.length}` },
+    { done: () => q.trialsRewardGiven, title: '森の奥、修行の回廊に挑戦しよう(レン)', sub: () => q.trialStage > 0 ? `第 ${Math.min(q.trialStage, TRIAL_STAGE_MAX)} / ${TRIAL_STAGE_MAX} 間` : '' },
+    { done: () => q.astraDefeated, title: '天文台で「星の番人アストラ」を倒そう', sub: () => '' },
+    { done: () => q.trialHardRewardGiven, title: '修行の回廊、裏ステージに挑戦しよう', sub: () => '' },
+    { done: () => q.minaHistoryCompleted, title: 'ミナの学院史クエストを手伝おう', sub: () => q.minaHistoryStarted ? `証言 ${q.testimonies.length} / 3` : '' },
+    { done: () => q.galonSparAcknowledged, title: 'ガロンと模擬戦をしよう', sub: () => '' },
+    { done: () => q.flowerQuestCompleted, title: 'フローラの「幻の花」に水をあげよう', sub: () => q.flowerQuestStarted ? `${q.flowerWaterCount} / 3 回` : '' },
+    { done: () => q.kentForbiddenBookFound, title: '図書室に隠された禁書を探そう', sub: () => '' },
+    { done: () => q.basementCleared, title: '温室の地下貯蔵庫を探索しよう', sub: () => '' },
+    { done: () => q.archiveRewardGiven, title: '図書室の秘密の書庫を見つけよう', sub: () => '' },
+    { done: () => q.newspapersFound.length >= NEWSPAPER_SPOTS.length, title: '学院新聞を集めよう', sub: () => `${q.newspapersFound.length} / ${NEWSPAPER_SPOTS.length} 部` },
+    { done: () => q.bossRushCompleted, title: 'ノアとボスラッシュに挑戦しよう(森でRキー)', sub: () => '' },
+    { done: () => q.achievementBonusGiven, title: '実績を全て解除しよう', sub: () => `実績 ${q.unlockedAchievements.length} / ${ACHIEVEMENTS.length}` },
+    { done: () => q.shadowSelfDefeated, title: '学院の屋上で「もう一人の魔法使い」に挑もう', sub: () => '' },
+    { done: () => q.trueEndingSeen, title: '屋上のローズ先生にもう一度話しかけよう', sub: () => '' }
+  ];
+  const next = steps.find(s => !s.done());
+  if (!next) return { title: '全てのストーリーを制覇した! おめでとう', sub: '学院祭や修行の回廊、ボスラッシュでさらに腕を磨こう' };
+  return { title: next.title, sub: next.sub() };
+}
 const TREASURE_SPOTS = [
   { scene: 'courtyard', x: 13, y: 4 },
   { scene: 'library', x: 10, y: 2 },
@@ -3210,30 +3247,17 @@ function drawHUD() {
     ctx.fillText(`☆${stardust}`, sx + 8, 82);
   }
 
-  const qx = WIDTH - 230, qy = 16, qw = 214, qh = 76;
+  const qx = WIDTH - 230, qy = 16, qw = 214, qh = 92;
   ctx.fillStyle = 'rgba(20,10,30,0.6)'; roundRect(qx, qy, qw, qh, 8); ctx.fill();
-  let questTitle = '教室で先生に話しかけよう', questSub = '';
-  if (quest.started && quest.crystals < quest.required) { questTitle = 'クエスト: 魔法結晶集め'; questSub = `結晶 ${quest.crystals} / ${quest.required}`; }
-  else if (quest.started && !quest.completed) { questTitle = '先生に結晶を報告しよう'; }
-  else if (quest.completed && !quest.queenQuestStarted) { questTitle = '図書室のミナに会いに行こう'; }
-  else if (quest.queenQuestStarted && !quest.queenDefeated) { questTitle = 'クエスト: 妖精の女王を倒せ'; }
-  else if (quest.queenDefeated && !quest.queenQuestCompleted) { questTitle = 'ミナに討伐を報告しよう'; }
-  else if (quest.dungeonUnlocked && !quest.dungeonBossDefeated) { questTitle = 'クエスト: 闇の魔導士を倒せ'; }
-  else if (quest.dungeonBossDefeated && !quest.dungeonRewardGiven) { questTitle = 'ガロンに討伐を報告しよう'; }
-  else if (quest.bookQuestStarted && !quest.bookQuestCompleted) { questTitle = 'クエスト: 古い魔法書探し'; questSub = `魔法書 ${quest.booksCollected} / 3`; }
-  else if (quest.hunterQuestStarted && !quest.hunterQuestCompleted) { questTitle = 'クエスト: 妖精ハンター'; questSub = `討伐 ${fairiesDefeated} / ${SCENES.courtyard.enemySpawns.length}`; }
-  else if (quest.leafQuestStarted && !quest.leafQuestCompleted) { questTitle = 'クエスト: 癒しの葉集め'; questSub = `癒しの葉 ${quest.leavesCollected} / 4`; }
-  else if (quest.dungeonRewardGiven && !quest.leafQuestStarted) { questTitle = '温室のフローラ先輩に会いに行こう'; }
-  else if (quest.kentBookQuestStarted && !quest.kentBookQuestCompleted) { questTitle = 'クエスト: 迷い込んだ本探し'; questSub = `本 ${quest.misplacedBooksReturned} / 3`; }
-  else if (quest.dungeonRewardGiven && !quest.familiarDefeated) { questTitle = 'クエスト: レインの書斎を探索せよ'; }
-  else if (quest.treasureRewardGiven && !quest.astraDefeated) { questTitle = 'クエスト: 天文台の星の番人を倒せ'; }
-  else if (quest.queenQuestCompleted) { questTitle = '学院いちの魔法使い!'; }
+  const nextObj = getNextObjective();
+  ctx.fillStyle = '#9fe0ff'; ctx.font = 'bold 10px sans-serif';
+  ctx.fillText('次にやること', qx + 12, qy + 14);
   ctx.fillStyle = '#f2d34a'; ctx.font = 'bold 13px sans-serif';
-  ctx.fillText(questTitle, qx + 12, qy + 20);
+  wrapText(nextObj.title, qx + 12, qy + 32, qw - 24, 16);
   ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif';
-  ctx.fillText(questSub, qx + 12, qy + 40);
+  ctx.fillText(nextObj.sub, qx + 12, qy + 66);
   ctx.fillStyle = '#bcefe0'; ctx.font = '11px sans-serif';
-  ctx.fillText(`妖精討伐 ${fairiesDefeated} / ${SCENES.courtyard.enemySpawns.length}`, qx + 12, qy + 58);
+  ctx.fillText(`妖精討伐 ${fairiesDefeated} / ${SCENES.courtyard.enemySpawns.length}`, qx + 12, qy + 84);
 
   ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText(SCENES[currentSceneKey].label, WIDTH / 2, 26);
