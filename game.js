@@ -2309,7 +2309,9 @@ function update(dt) {
       });
       misplacedBooksSpawned = true;
     }
-    if (quest.leafQuestCompleted && currentSceneKey === 'greenhouse') {
+    if (quest.leafQuestCompleted) {
+      // same fix as the phantom flower below: tick regardless of current scene, otherwise
+      // leaving the greenhouse while waiting for a potion to regrow freezes the timer
       LEAF_SPOTS.forEach((spot, i) => {
         const px = toPx(spot.x) + 6, py = toPx(spot.y) + 6;
         const occupied = worldEntities.greenhouse.items.some(it => it instanceof Potion && Math.abs(it.x - px) < 4 && Math.abs(it.y - py) < 4);
@@ -2325,7 +2327,10 @@ function update(dt) {
       worldEntities.library.items.push(new ForbiddenBook(toPx(9) + 6, toPx(3) + 6));
       forbiddenBookSpawned = true;
     }
-    if (quest.flowerQuestStarted && !quest.flowerQuestCompleted && currentSceneKey === 'greenhouse') {
+    if (quest.flowerQuestStarted && !quest.flowerQuestCompleted) {
+      // ticks regardless of which scene the player is currently in -- otherwise leaving the
+      // greenhouse to do literally anything else while waiting for the regrowth (the natural
+      // thing to do with a 25s cooldown) freezes the timer and the flower never comes back
       const fpx = toPx(FLOWER_SPOT.x) + 6, fpy = toPx(FLOWER_SPOT.y) + 6;
       const flowerPresent = worldEntities.greenhouse.items.some(it => it instanceof WaterFlower && Math.abs(it.x - fpx) < 4 && Math.abs(it.y - fpy) < 4);
       if (!flowerPresent) {
