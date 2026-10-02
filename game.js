@@ -231,6 +231,20 @@ function buildGreenhouse() {
   [[9, 3], [10, 3], [9, 11], [10, 11]].forEach(([x, y]) => map[y][x] = 'V');
   return map;
 }
+function buildGreenhouseBasement() {
+  const map = emptyMap();
+  addBorder(map);
+  map[0][10] = 'D';
+  [[5, 6], [14, 6], [10, 9]].forEach(([x, y]) => map[y][x] = 'P');
+  return map;
+}
+function buildLibraryArchive() {
+  const map = emptyMap();
+  addBorder(map);
+  map[0][10] = 'D';
+  [2, 3].forEach(y => { for (let x = 7; x <= 12; x++) map[y][x] = 'B'; });
+  return map;
+}
 
 function collides(map, x, y, w, h) {
   const left = Math.floor(x / TILE), right = Math.floor((x + w - 1) / TILE);
@@ -475,6 +489,24 @@ function roseRooftopLines(quest) {
       ['ゆっくりしていってね。']
     ]),
     complete: () => {}
+  };
+}
+function festivalLines(quest) {
+  if (!quest.achievementBonusGiven) {
+    return { lines: ['学院祭の準備中です。もう少し待っててね!', '(実績を全て集めると、何かが変わるかもしれません)'], complete: () => {} };
+  }
+  if (festivalActive) {
+    return { lines: ['今まさに屋台巡りの真っ最中ですよ! 妖精たちを倒して回ってください!'], complete: () => {} };
+  }
+  const recordLine = quest.festivalPlayed ? `これまでに ${quest.festivalClearCount} 回挑戦してくれましたね!` : '初めての挑戦ですね!';
+  return {
+    lines: [
+      'ようこそ、学院祭「屋台巡り」へ!',
+      '中庭に出現する5体の妖精たちを全部倒すと、お祭りのご褒美に妖精のかけらをプレゼントします。',
+      recordLine,
+      '準備はいいですか? 話し終えると同時に始まりますよ!'
+    ],
+    complete: () => { startFestival(); }
   };
 }
 function noahLines(quest) {
@@ -798,7 +830,8 @@ const SCENES = {
     ],
     npcs: [
       { x: 4, y: 10, name: 'アリサ', color: '#c95fae', hairColor: '#e07ab0', hairStyle: 'twin', eyeColor: '#ff8fc4', getLines: alisaLines },
-      { x: 16, y: 10, name: '行商人ミオ', color: '#c9995a', hairColor: '#8a5a2a', hairStyle: 'side', eyeColor: '#e0b070', getLines: () => ({ lines: ['いらっしゃい!'], complete: () => {} }), isShop: true }
+      { x: 16, y: 10, name: '行商人ミオ', color: '#c9995a', hairColor: '#8a5a2a', hairStyle: 'side', eyeColor: '#e0b070', getLines: () => ({ lines: ['いらっしゃい!'], complete: () => {} }), isShop: true },
+      { x: 6, y: 9, name: '祭りの案内人', color: '#d67a4a', hairColor: '#8a4a2a', hairStyle: 'spike', eyeColor: '#ffce8a', getLines: festivalLines }
     ],
     enemySpawns: [
       { type: 'leaf', x: 5, y: 5 },
@@ -840,7 +873,8 @@ const SCENES = {
     map: buildLibrary(),
     doors: [
       { x: COLS - 1, y: 7, to: 'courtyard', entry: { x: 1, y: 7 } },
-      { x: 0, y: 7, to: 'greenhouse', entry: { x: COLS - 2, y: 7 } }
+      { x: 0, y: 7, to: 'greenhouse', entry: { x: COLS - 2, y: 7 } },
+      { x: 10, y: ROWS - 1, to: 'libraryArchive', entry: { x: 10, y: 1 } }
     ],
     npcs: [
       { x: 10, y: 6, name: 'ミナ先輩', color: '#4fae8f', hairColor: '#2f8f74', hairStyle: 'side', eyeColor: '#6fe0c4', getLines: minaLines },
@@ -848,11 +882,28 @@ const SCENES = {
     ],
     enemySpawns: []
   },
+  libraryArchive: {
+    label: '図書室 秘密の書庫',
+    map: buildLibraryArchive(),
+    doors: [{ x: 10, y: 0, to: 'library', entry: { x: 10, y: ROWS - 2 } }],
+    npcs: [],
+    enemySpawns: []
+  },
   greenhouse: {
     label: '学院の温室',
     map: buildGreenhouse(),
-    doors: [{ x: COLS - 1, y: 7, to: 'library', entry: { x: 1, y: 7 } }],
+    doors: [
+      { x: COLS - 1, y: 7, to: 'library', entry: { x: 1, y: 7 } },
+      { x: 10, y: ROWS - 1, to: 'greenhouseBasement', entry: { x: 10, y: 1 } }
+    ],
     npcs: [{ x: 3, y: 7, name: 'フローラ先輩', color: '#5fae5f', hairColor: '#3a7a3a', hairStyle: 'twin', eyeColor: '#9fe0a0', getLines: floraLines }],
+    enemySpawns: []
+  },
+  greenhouseBasement: {
+    label: '温室の地下貯蔵庫',
+    map: buildGreenhouseBasement(),
+    doors: [{ x: 10, y: 0, to: 'greenhouse', entry: { x: 10, y: ROWS - 2 } }],
+    npcs: [],
     enemySpawns: []
   },
   forest: {
@@ -970,7 +1021,10 @@ const QUEST_LOG_ENTRIES = [
   { name: 'ケントの禁書', status: () => quest.kentForbiddenBookFound ? '発見済み' : '未発見' },
   { name: '学院新聞コレクション', status: () => quest.newspaperRewardGiven ? '完了' : quest.newspapersFound.length > 0 ? `${quest.newspapersFound.length}/${NEWSPAPER_SPOTS.length}` : '未着手' },
   { name: '屋上/もう一人の魔法使い', status: () => quest.shadowSelfDefeated ? '討伐済み' : quest.achievementBonusGiven ? '挑戦可能' : '未発見' },
-  { name: '真のエンディング', status: () => quest.trueEndingSeen ? '鑑賞済み' : '未鑑賞' }
+  { name: '真のエンディング', status: () => quest.trueEndingSeen ? '鑑賞済み' : '未鑑賞' },
+  { name: '温室の地下貯蔵庫', status: () => quest.basementCleared ? '制覇' : quest.flowerQuestCompleted ? '挑戦可能' : '未発見' },
+  { name: '図書室 秘密の書庫', status: () => quest.archiveRewardGiven ? '発見済み' : quest.kentForbiddenBookFound ? '発見可能' : '未発見' },
+  { name: '学院祭「屋台巡り」', status: () => quest.festivalPlayed ? `${quest.festivalClearCount}回挑戦済み` : quest.achievementBonusGiven ? '挑戦可能' : '未開催' }
 ];
 const SHOP_ITEMS = [
   {
@@ -1374,6 +1428,9 @@ let trialRunTimer = 0;
 let rooftopSpawned = false;
 let creditsScrollT = 0;
 let newspapersSpawned = false;
+let basementSpawned = false;
+let archiveSpawned = false;
+let festivalActive = false;
 let trialSpawnedThisRoom = false;
 let misplacedBooksSpawned = false;
 let darkStudySpawned = false;
@@ -1420,7 +1477,9 @@ const SCENE_BGM = {
   courtyard: { notes: [261.6, 329.6, 392.0, 523.3], lfoSpeed: 0.15, type: 'sine' },
   classroom: { notes: [293.7, 349.2, 440.0, 587.3], lfoSpeed: 0.12, type: 'sine' },
   library: { notes: [220.0, 277.2, 329.6, 440.0], lfoSpeed: 0.1, type: 'sine' },
+  libraryArchive: { notes: [174.6, 220.0, 261.6, 329.6], lfoSpeed: 0.07, type: 'sine' },
   greenhouse: { notes: [246.9, 311.1, 369.9, 493.9], lfoSpeed: 0.13, type: 'triangle' },
+  greenhouseBasement: { notes: [185.0, 220.0, 277.2, 349.2], lfoSpeed: 0.16, type: 'triangle' },
   forest: { notes: [196.0, 246.9, 293.7, 392.0], lfoSpeed: 0.18, type: 'triangle' },
   trial: { notes: [174.6, 220.0, 261.6, 349.2], lfoSpeed: 0.3, type: 'sawtooth' },
   dungeon1: { notes: [164.8, 196.0, 246.9, 311.1], lfoSpeed: 0.2, type: 'square' },
@@ -1539,7 +1598,9 @@ function freshQuest() {
     kentForbiddenBookFound: false,
     trialBestTime: null,
     shadowSelfDefeated: false, trueEndingSeen: false,
-    newspapersFound: [], newspaperRewardGiven: false
+    newspapersFound: [], newspaperRewardGiven: false,
+    basementCleared: false, archiveRewardGiven: false,
+    festivalPlayed: false, festivalClearCount: 0
   };
 }
 function makeSpawnedFairies(spawnDefs, defeatedArr) {
@@ -1578,10 +1639,15 @@ function rebuildWorld() {
   observatorySpawned = false;
   rooftopSpawned = false;
   newspapersSpawned = false;
+  basementSpawned = false;
+  archiveSpawned = false;
+  festivalActive = false;
   SCENES.trial.map[0][10] = '#';
   SCENES.dungeon2.map[ROWS - 1][10] = '#';
   SCENES.classroom.map[0][10] = '#';
   SCENES.observatory.map[0][10] = '#';
+  SCENES.greenhouse.map[ROWS - 1][10] = '#';
+  SCENES.library.map[ROWS - 1][10] = '#';
   projectiles = []; enemyProjectiles = []; particles = []; floatingTexts = []; dialogue = null; doorCooldown = 0.5;
   waveActive = false; waveNumber = 0; waveRestT = 0; waveBannerT = 0; waveBannerText = '';
   bossRushActive = false; bossRushIndex = 0; bossRushNoHit = true;
@@ -1923,6 +1989,22 @@ function startGalonSpar() {
   waveBannerT = 1.8;
   playTone(440, 0.18, 'square');
 }
+const FESTIVAL_SPOTS = [
+  { type: 'leaf', x: 5, y: 9 }, { type: 'water', x: 15, y: 9 }, { type: 'star', x: 10, y: 5 },
+  { type: 'leaf', x: 14, y: 11 }, { type: 'water', x: 6, y: 5 }
+];
+function startFestival() {
+  if (festivalActive) return;
+  festivalActive = true;
+  FESTIVAL_SPOTS.forEach(spot => {
+    const f = new Fairy(spot.type, toPx(spot.x) + 6, toPx(spot.y) + 6, { noElite: true });
+    f.isFestival = true;
+    worldEntities.courtyard.fairies.push(f);
+  });
+  waveBannerText = '学院祭「屋台巡り」開始!';
+  waveBannerT = 1.8;
+  playTone(520, 0.15, 'triangle');
+}
 function continueTrialHardMode() {
   quest.trialHardUnlocked = true;
   worldEntities.trial.fairies = [];
@@ -2029,6 +2111,7 @@ function update(dt) {
         if (doorDef) {
           if (currentSceneKey === 'forest' && waveActive) endWaveRun();
           if (currentSceneKey === 'forest' && bossRushActive) { bossRushActive = false; worldEntities.forest.fairies = []; }
+          if (currentSceneKey === 'courtyard' && festivalActive) { festivalActive = false; worldEntities.courtyard.fairies = worldEntities.courtyard.fairies.filter(f => !f.isFestival); }
           currentSceneKey = doorDef.to;
           player.x = toPx(doorDef.entry.x) + (TILE - player.w) / 2;
           player.y = toPx(doorDef.entry.y) + (TILE - player.h) / 2;
@@ -2039,6 +2122,35 @@ function update(dt) {
     }
 
     if (quest.trialStage >= 1 && quest.trialStage <= TRIAL_STAGE_MAX && !quest.trialsRewardGiven) trialRunTimer += dt;
+    if (festivalActive && currentSceneKey === 'courtyard' && worldEntities.courtyard.fairies.filter(f => f.isFestival).every(f => f.dead)) {
+      festivalActive = false;
+      quest.festivalPlayed = true;
+      quest.festivalClearCount++;
+      fairyShards += 30;
+      addFloatingText(player.cx, player.y - 24, '屋台巡りクリア! 妖精のかけら+30', '#ffd76b');
+      waveBannerText = '屋台巡りクリア!';
+      waveBannerT = 1.6;
+      playTone(880, 0.2, 'triangle');
+    }
+    if (currentSceneKey === 'libraryArchive' && !quest.archiveRewardGiven) {
+      quest.archiveRewardGiven = true;
+      player.power += 10; player.maxHp += 20; player.hp = player.maxHp;
+      dialogue = new Dialogue('秘密の書庫', [
+        '禁書庫の奥に、さらに隠された小部屋があった。',
+        '壁一面に、歴代の優秀な生徒たちの記録が刻まれている。',
+        'その最後に、まだ名前の欄が空白のまま残された一行を見つけた。',
+        '……まるで、あなたが来るのを待っていたかのように。(魔法威力 +10 / 最大HP +20)'
+      ], () => {});
+      gameState = 'dialogue';
+      playTone(600, 0.15, 'sine'); playTone(900, 0.18, 'sine');
+    }
+    if (currentSceneKey === 'greenhouseBasement' && !quest.basementCleared && basementSpawned
+        && worldEntities.greenhouseBasement.fairies.every(f => f.dead)) {
+      quest.basementCleared = true;
+      player.power += 6; player.maxHp += 15; player.hp = player.maxHp;
+      addFloatingText(player.cx, player.y - 24, '貯蔵庫を一掃した! 力+6 HP+15', '#9fe0a0');
+      shake(3, 0.2);
+    }
     const trialCeiling = quest.trialHardUnlocked ? TRIAL_STAGE_HARD_MAX : TRIAL_STAGE_MAX;
     if (currentSceneKey === 'trial' && quest.trialStage >= 1 && quest.trialStage <= trialCeiling) {
       const doorOpen = SCENES.trial.map[0][10] === 'D';
@@ -2116,6 +2228,21 @@ function update(dt) {
         worldEntities.rooftop.fairies.push(new Fairy('shadowself', toPx(10) + 6, toPx(8) + 6));
       }
       rooftopSpawned = true;
+    }
+    if (quest.flowerQuestCompleted && !basementSpawned) {
+      SCENES.greenhouse.map[ROWS - 1][10] = 'D';
+      if (!quest.basementCleared) {
+        worldEntities.greenhouseBasement.fairies = [
+          new Fairy('water', toPx(5) + 6, toPx(5) + 6, { noElite: true }),
+          new Fairy('water', toPx(14) + 6, toPx(5) + 6, { noElite: true }),
+          new Fairy('water', toPx(10) + 6, toPx(11) + 6, { noElite: true })
+        ];
+      }
+      basementSpawned = true;
+    }
+    if (quest.kentForbiddenBookFound && !archiveSpawned) {
+      SCENES.library.map[ROWS - 1][10] = 'D';
+      archiveSpawned = true;
     }
     if (quest.started && !newspapersSpawned) {
       NEWSPAPER_SPOTS.forEach((spot, i) => {
@@ -2433,6 +2560,8 @@ function drawFloor(px, py, tx, ty) {
   else if (currentSceneKey === 'trial') { c1 = '#6b5a3a'; c2 = '#5f4f32'; }
   else if (currentSceneKey === 'observatory') { c1 = '#141230'; c2 = '#10102a'; }
   else if (currentSceneKey === 'rooftop') { c1 = '#8a95b8'; c2 = '#7e89ac'; }
+  else if (currentSceneKey === 'greenhouseBasement') { c1 = '#2a3a2a'; c2 = '#243224'; }
+  else if (currentSceneKey === 'libraryArchive') { c1 = '#3a2f24'; c2 = '#332a20'; }
   ctx.fillStyle = dark ? c1 : c2;
   ctx.fillRect(px, py, TILE, TILE);
   if (currentSceneKey === 'courtyard' && (tx * 31 + ty * 17) % 7 === 0) {
@@ -3320,7 +3449,9 @@ const MAP_LAYOUT = {
   classroom: { x: 0, y: -1 },
   courtyard: { x: 0, y: 0 },
   library: { x: -1, y: 0 },
+  libraryArchive: { x: -1, y: 1 },
   greenhouse: { x: -2, y: 0 },
+  greenhouseBasement: { x: -2, y: 1 },
   forest: { x: 1, y: 0 },
   trial: { x: 2, y: 0 },
   dungeon1: { x: 0, y: 1 },
@@ -3508,7 +3639,8 @@ function drawInventoryPanel() {
     `ボスラッシュ: ${quest.bossRushCompleted ? (quest.bossRushNoHit ? '制覇(無傷)' : '制覇') : '未挑戦'}`,
     `修行の回廊 最速クリア: ${quest.trialBestTime !== null ? quest.trialBestTime.toFixed(1) + '秒' : '記録なし'}`,
     `模擬戦(ガロン): ${quest.galonSparCompleted ? '勝利' : quest.galonSparStarted ? '進行中' : '未挑戦'}　幻の花: ${quest.flowerQuestCompleted ? '開花' : quest.flowerQuestStarted ? `${quest.flowerWaterCount}/3` : '未着手'}`,
-    `学院新聞: ${quest.newspapersFound.length} / ${NEWSPAPER_SPOTS.length}　屋上: ${quest.shadowSelfDefeated ? '制覇' : quest.achievementBonusGiven ? '挑戦可能' : '未発見'}　真のエンド: ${quest.trueEndingSeen ? '鑑賞済み' : '未鑑賞'}`
+    `学院新聞: ${quest.newspapersFound.length} / ${NEWSPAPER_SPOTS.length}　屋上: ${quest.shadowSelfDefeated ? '制覇' : quest.achievementBonusGiven ? '挑戦可能' : '未発見'}　真のエンド: ${quest.trueEndingSeen ? '鑑賞済み' : '未鑑賞'}`,
+    `地下貯蔵庫: ${quest.basementCleared ? '制覇' : '未制覇'}　秘密の書庫: ${quest.archiveRewardGiven ? '発見済み' : '未発見'}　学院祭: ${quest.festivalClearCount}回`
   ];
   ctx.font = '13px sans-serif';
   ctx.fillStyle = '#fff';
